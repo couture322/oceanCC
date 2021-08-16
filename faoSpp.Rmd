@@ -1,0 +1,43 @@
+---
+title: "Species data work"
+author: "J. L. Couture"
+date: "8/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+
+```
+
+```{r}
+
+capt<-read_csv("data/faoDat/Capture_2021.1.2/CAPTURE_QUANTITY.csv")%>%
+  mutate(unCode=as.character(COUNTRY.UN_CODE))%>%
+  rename(alph3spp=SPECIES.ALPHA_3_CODE)
+
+countr<-read_csv("data/faoDat/Capture_2021.1.2/CL_FI_COUNTRY_GROUPS.csv")%>%
+  select(unCode=UN_Code,ISO3_Code)
+
+spp<-read_csv("data/faoDat/Capture_2021.1.2/CL_FI_SPECIES_GROUPS.csv")%>%
+  select(alph3spp=`3A_Code`,Name_En,Scientific_Name)
+
+chn<-capt%>%
+  left_join(.,countr)%>%
+  left_join(.,spp)%>%
+  filter(ISO3_Code=="CHN",
+         PERIOD>2009)%>%
+  group_by(PERIOD)%>%
+  slice_max(order_by = VALUE,n=10)
+
+ggplot(chn,aes(x=PERIOD,y=VALUE,groups=Name_En))+
+  geom_line(aes(color=Name_En))+
+  theme_bw()
+
+```
+
