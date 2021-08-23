@@ -6,12 +6,17 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+
+knitr::opts_chunk$set(echo = FALSE,messages=FALSE,warning = FALSE)
+
 ```
 
 ```{r}
 
 library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
 
 ```
 
@@ -38,6 +43,98 @@ chn<-capt%>%
 ggplot(chn,aes(x=PERIOD,y=VALUE,groups=Name_En))+
   geom_line(aes(color=Name_En))+
   theme_bw()
+
+```
+
+***
+
+### Specific species
+
+[Szuwalski et al. 2020](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0227106#pone-0227106-g009) lists a few of the major capture fisheries, which I did a quick search for on [AquaMaps](www.aquamaps.org) to get an idea of distributions. The smallest distributions I saw were the Mauxia shrimp (*Acetes chinensis*) and the Black scraper (*Thamnaconus modestus*), which each appear to range from Northern Japan to the South China Sea. I pulled data for the shrimp because it looks to be limited to shallower waters and thus have a smaller distribution.
+
+Here I am calculating the total range area:
+
+```{r}
+
+acechi<-read_csv("data/acechi_distr.csv")%>%
+  rename(lat=`Center Lat`,long=`Center Long`)
+
+ac2b<-acechi%>%
+  select(lat,long)%>%
+  group_by(lat)%>%
+  summarise(maxLong=max(long),
+            minLong=min(long))%>%
+  # pivot_longer(cols=maxLong:minLong,values_to = "lon",names_to = "nm")%>%
+  # select(-nm)%>%
+  # filter(long %in% range(long))%>%
+  ungroup()
+  # add_row(.[1,])%>%
+  
+ac2c<-bind_rows(ac2b%>%
+                  select(lat,lon=maxLong),
+                ac2b%>%
+                  select(lat,lon=minLong)%>%
+                  arrange(desc(lat)))%>%
+  add_row(.[1,])%>%
+  st_as_sf(coords=c("lon","lat"),crs=4326)%>%
+  summarise(geometry=st_combine(geometry))%>%
+  st_cast("POLYGON")
+
+# st_area(ac2c$geometry)
+
+```
+
+```{r}
+
+wrld<-ne_coastline(scale = "medium",returnclass = "sf")%>%
+  st_transform(crs=4326)
+
+achiArea<-st_area(ac2c)
+
+ggplot()+
+  geom_sf(data=wrld)+
+  geom_sf(data=ac2c)+
+  geom_point(data=ac2b,aes(x=maxLong,y=lat),color="green")+
+  geom_point(data=ac2b,aes(x=minLong,y=lat),color="red")+
+  # geom_point(data=ac2c,aes(x=lon,y=lat),color="blue")+
+  theme_bw()
+
+```
+
+Total range of *A. chinensis* based on these data is `r as.numeric(achiArea)/1000000` km^2^
+
+$$Marine\ aquaculture=2.3x{10}^6\ ha=23,000{km}^2$$
+
+$$\therefore\ ocean\ farms = \frac{23,000\ {km}^2}{4,0000,000\ {km}^2}=0.575\%$$
+
+***
+
+### Thinking about just linear, not including interior
+
+```{r}
+
+ac2b<-acechi%>%
+  select(lat,long)%>%
+  group_by(lat)%>%
+  summarise(maxLong=max(long),
+            minLong=min(long))%>%
+  # pivot_longer(cols=maxLong:minLong,values_to = "lon",names_to = "nm")%>%
+  # select(-nm)%>%
+  # filter(long %in% range(long))%>%
+  ungroup()
+  # add_row(.[1,])%>%
+  
+ac2c<-bind_rows(ac2b%>%
+                  select(lat,lon=maxLong),
+                ac2b%>%
+                  select(lat,lon=minLong)%>%
+                  arrange(desc(lat)))%>%
+  add_row(.[1,])%>%
+  st_as_sf(coords=c("lon","lat"),crs=4326)%>%
+  summarise(geometry=st_combine(geometry))%>%
+  st_cast("POLYGON")
+
+# st_area(ac2c$geometry)
 
 ```
 
