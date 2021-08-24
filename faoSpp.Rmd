@@ -111,6 +111,7 @@ $$\therefore\ ocean\ farms = \frac{23,000\ {km}^2}{4,0000,000\ {km}^2}=0.575\%$$
 
 ### Thinking about just linear, not including interior
 
+Copied from above, no changes made yet
 ```{r}
 
 ac2b<-acechi%>%
