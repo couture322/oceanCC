@@ -1,0 +1,123 @@
+---
+title: "Ocean acidification projections"
+author: "J. L. Couture"
+date: "9/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(googledrive)
+library(ncdf4)
+library(mregions)
+library(sf)
+
+```
+
+## OA Data
+
+These data are from a public database and derived by [Jiang et al. 2019](https://www.nature.com/articles/s41598-019-55039-4) at NCEI. 
+
+*Cite as: Jiang, Li-Qing; Carter, Brendan R.; Feely, Richard A.; Lauvset, Siv K.; Olsen, Are (2019). Global surface ocean pH, acidity, and Revelle Factor on a 1x1 degree global grid from 1770 to 2100 (NCEI Accession 0206289). [indicate subset used]. NOAA National Centers for Environmental Information. Dataset. https://doi.org/10.25921/kgqr-9h49. Accessed 22 September 2021.*
+
+```{r oaDat}
+
+# oa<-drive_download("Surface_pH_2010_2100_RCP85.nc",
+#                    path="data/surfOA.nc",
+#                    overwrite = TRUE)
+
+oaDat<-nc_open("data/surfOA.nc")
+
+```
+
+
+
+```{r pullVars, echo=FALSE}
+
+lon<-ncvar_get(oaDat,"Longitude")
+lat<-ncvar_get(oaDat,"Latitude")
+ph<-ncvar_get(oaDat,"pH")
+mon<-ncvar_get(oaDat,"Month")
+year<-ncvar_get(oaDat,"Year")
+
+
+
+```
+
+
+```{r}
+
+library(ggmap)
+library(viridis)
+library(weathermetrics)
+library(chron)
+library(RColorBrewer)
+library(lattice)
+
+# EmpowerDat plotting function
+
+mapCDF<-function(lat,lon,var,title){
+  
+  titletext <- "title"
+  expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon),
+           ph=as.vector(t(var)))%>%
+    ggplot()+
+    geom_point(aes(x=lon,y=lat,color=ph),size=1)+
+    borders("world",colour="black",fill="grey")+
+    scale_color_viridis(na.value="white",name="Surface pH")+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle(titletext)+
+    theme_bw()
+  
+}
+
+mapCDF(lat,lon,var=ph[,,1,1])
+
+```
+
+```{r}
+
+### animate
+library(gganimate)
+## convert the array to df
+phDf<-NULL
+
+for (i in 1:10){ # iterate over years
+
+  for(j in 1:12){ # iterate over months in a year
+    
+    tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
+      mutate(lon=ifelse(lon>180,-(360-lon),lon),
+             ph=as.vector(t(ph[,,j,i])))%>%
+      mutate(month=as.numeric(j),
+             year=as.numeric(2000+10*i))
+    
+  }
+  
+    phDf = phDf %>% bind_rows(tempDf)
+}
+
+phDf<-phDf%>%
+  mutate(date=paste(month, year, sep = "/"))
+
+### gganimate
+
+
+phAnim<-ggplot(phDf,aes(x=lon,y=lat,color=ph),size=1)+
+  geom_point()+
+  borders("world",colour="black",fill="grey")+
+  scale_color_viridis(na.value="white",name="Surface pH")+
+  theme(legend.direction = "vertical",legend.position = "right")+
+  coord_quickmap()+
+  theme_bw()+
+  labs(title="Year:{current_frame}")+
+  transition_manual(year)
+  
+animate(phAnim)
+
+```
+

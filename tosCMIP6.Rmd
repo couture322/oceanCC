@@ -1,0 +1,114 @@
+---
+title: "SST projections"
+author: "J. L. Couture"
+date: "2/2/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(googledrive)
+library(ncdf4)
+library(mregions)
+library(sf)
+library(ggmap)
+library(viridis)
+library(weathermetrics)
+library(chron)
+library(RColorBrewer)
+library(lattice)
+library(gganimate)
+
+
+```
+
+## CMIP6 SST Data
+
+Data were pulled from the [Earth System Grid Federation]("https://esgf.llnl.gov/") site which houses the CMIP6 database. I have added the SST netCDF file to the google drive `(myDrive > CI > data > climateData > cmip6 > tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_210101-230012.nc)`
+
+```{r oaDat}
+
+drive_download("tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_210101-230012.nc",
+                   path="data/cmip6/sstMon.nc",
+                   overwrite = TRUE)
+
+sst<-nc_open("data/cmip6/sstMon.nc")
+
+```
+
+```{r pullVars, echo=FALSE}
+
+lon<-ncvar_get(sst,"longitude")
+lat<-ncvar_get(sst,"latitude")
+sstVar<-ncvar_get(sst,"tos") # in degC
+# timeBnd<-ncvar_get(sst,"time")
+# year<-ncvar_get(sst,"Year")
+
+ttl<-ncatt_get(sst,"tos","long_name")
+ttlNm<-as.character(ttl$value)
+
+```
+
+
+```{r}
+
+# EmpowerDat plotting function
+
+mapCDF<-function(lat,lon,var,title){
+  
+  titletext <- title
+  expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon),
+           ph=as.vector(t(var)))%>%
+    ggplot()+
+    geom_point(aes(x=lon,y=lat,color=ph),size=1)+
+    borders("world",colour="black",fill="grey")+
+    scale_color_viridis(na.value="white",name="Surface pH")+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle(titletext)+
+    theme_bw()
+  
+}
+
+mapCDF(lat,lon,var=sst[,,1],ttlNm)
+
+```
+
+```{r}
+
+## convert the array to df
+sstDf<-NULL
+
+
+for(j in 1:12){ # iterate over time
+    
+  tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon),
+           sst=as.vector(t(sst[,,j])))%>%
+      mutate(day=as.numeric(j))
+  
+  sstDf = sstDf %>% bind_rows(tempDf)    
+}
+  
+
+
+### gganimate
+
+
+sstAnim<-ggplot(sstDf,aes(x=lon,y=lat,color=sst),size=1)+
+  geom_point()+
+  borders("world",colour="black",fill="grey")+
+  scale_color_viridis(na.value="white",name="Surface pH")+
+  theme(legend.direction = "vertical",legend.position = "right")+
+  coord_quickmap()+
+  theme_bw()+
+  labs(title=ttlNm,subtitle = "Month: {current_frame}")+
+  transition_manual(day)
+  
+animate(sstAnim)
+
+```
+
