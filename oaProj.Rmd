@@ -24,11 +24,13 @@ These data are from a public database and derived by [Jiang et al. 2019](https:/
 
 ```{r oaDat}
 
-# oa<-drive_download("Surface_pH_2010_2100_RCP85.nc",
-#                    path="data/surfOA.nc",
-#                    overwrite = TRUE)
+datFile<-"data/surfOA.nc"
 
-oaDat<-nc_open("data/surfOA.nc")
+drive_download("Surface_pH_2010_2100_RCP85.nc",
+                   path=datFile,
+                   overwrite = TRUE)
+
+oaDat<-nc_open(datFile)
 
 ```
 
@@ -42,7 +44,7 @@ ph<-ncvar_get(oaDat,"pH")
 mon<-ncvar_get(oaDat,"Month")
 year<-ncvar_get(oaDat,"Year")
 
-
+nc_close(oaDat)
 
 ```
 
@@ -114,10 +116,22 @@ phAnim<-ggplot(phDf,aes(x=lon,y=lat,color=ph),size=1)+
   theme(legend.direction = "vertical",legend.position = "right")+
   coord_quickmap()+
   theme_bw()+
-  labs(title="Year:{current_frame}")+
+  labs(title="Ocean acidification",subtitle = "Year:{current_frame}")+
   transition_manual(year)
   
 animate(phAnim)
+
+# anim_save()
+
+```
+###### Delete data file from local
+
+```{r}
+
+if (file.exists(datFile)) {
+ unlink(datFile)
+ cat(paste("The file has been deleted: ",datFile))
+}
 
 ```
 

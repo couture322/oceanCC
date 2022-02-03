@@ -20,6 +20,7 @@ library(chron)
 library(RColorBrewer)
 library(lattice)
 library(gganimate)
+library(lubridate)
 
 
 ```
@@ -28,13 +29,15 @@ library(gganimate)
 
 Data were pulled from the [Earth System Grid Federation]("https://esgf.llnl.gov/") site which houses the CMIP6 database. I have added the SST netCDF file to the google drive `(myDrive > CI > data > climateData > cmip6 > tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_210101-230012.nc)`
 
-```{r oaDat}
+```{r getDat}
 
-drive_download("tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_210101-230012.nc",
-                   path="data/cmip6/sstMon.nc",
+datFile<-"data/cmip6/sstMon.nc"
+
+drive_download("tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_201501-210012.nc",
+                   path=datFile,
                    overwrite = TRUE)
 
-sst<-nc_open("data/cmip6/sstMon.nc")
+sst<-nc_open(datFile)
 
 ```
 
@@ -43,7 +46,7 @@ sst<-nc_open("data/cmip6/sstMon.nc")
 lon<-ncvar_get(sst,"longitude")
 lat<-ncvar_get(sst,"latitude")
 sstVar<-ncvar_get(sst,"tos") # in degC
-# timeBnd<-ncvar_get(sst,"time")
+timeBnd<-ncvar_get(sst,"time_bnds")
 # year<-ncvar_get(sst,"Year")
 
 ttl<-ncatt_get(sst,"tos","long_name")
@@ -61,54 +64,155 @@ mapCDF<-function(lat,lon,var,title){
   titletext <- title
   expand.grid(lat=lat[1,],lon=lon[,1])%>%
     mutate(lon=ifelse(lon>180,-(360-lon),lon),
-           ph=as.vector(t(var)))%>%
+           varPlt=as.vector(t(var)))%>%
     ggplot()+
-    geom_point(aes(x=lon,y=lat,color=ph),size=1)+
+    geom_point(aes(x=lon,y=lat,color=varPlt),size=1)+
     borders("world",colour="black",fill="grey")+
-    scale_color_viridis(na.value="white",name="Surface pH")+
+    scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
     theme(legend.direction = "vertical",legend.position = "right")+
     coord_quickmap()+
-    ggtitle(titletext)+
+    ggtitle("Average Annual Sea Surface Temperature")+
     theme_bw()
   
 }
 
-mapCDF(lat,lon,var=sst[,,1],ttlNm)
+mapCDF(lat,lon,var=sstVar[,,1],ttlNm)
 
 ```
 
 ```{r}
 
 ## convert the array to df
-sstDf<-NULL
+
+## calculate mean temperatures for a year and paste into a new DF: aveSSTdf
+
+newYr<-seq(1,length(timeBnd),by=12)
+aveSSTdf<-NULL
+datesDf<-tibble(date=as_date(timeBnd[1,],origin="1850-01-01"))%>%
+  mutate(year=year(date))
 
 
-for(j in 1:12){ # iterate over time
-    
-  tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
-    mutate(lon=ifelse(lon>180,-(360-lon),lon),
-           sst=as.vector(t(sst[,,j])))%>%
-      mutate(day=as.numeric(j))
+for(i in 1:length(newYr)){
   
-  sstDf = sstDf %>% bind_rows(tempDf)    
+  yrDf<-expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon))
+  
+  
+  for(j in 1:12){ # iterate over time
+    k=newYr[i]+j-1
+    
+  monDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon),
+           sst=as.vector(t(sstVar[,,k])))
+  
+  yrDf = yrDf %>% bind_cols(monDf%>%select(sst))    
+  
+  }
+  yrDf<-yrDf%>%
+    mutate(aveSST=rowMeans(.[-1:-2],na.rm = TRUE))%>%
+    select(lat,lon,aveSST)%>%
+    mutate(year=2014+i)#datesDf[k,"year"])
+  
+  aveSSTdf<-aveSSTdf%>%
+    bind_rows(.,yrDf)
+  
+  i=i+1
 }
   
-
+  
+# testdf<-aveSSTdf%>%
+#   filter(year %in% 2015:2020)
 
 ### gganimate
 
 
-sstAnim<-ggplot(sstDf,aes(x=lon,y=lat,color=sst),size=1)+
+sstAnim<-ggplot(aveSSTdf,aes(x=lon,y=lat,color=aveSST),size=1)+
   geom_point()+
   borders("world",colour="black",fill="grey")+
-  scale_color_viridis(na.value="white",name="Surface pH")+
+  scale_color_viridis(na.value="white",name="Temp (C)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
   theme(legend.direction = "vertical",legend.position = "right")+
   coord_quickmap()+
   theme_bw()+
-  labs(title=ttlNm,subtitle = "Month: {current_frame}")+
-  transition_manual(day)
+  labs(title="Average Annual Sea Surface Temperature",subtitle = "Year: {closest_state}")+
+  transition_states(year,transition_length = 2)
   
 animate(sstAnim)
 
+# anim_save(filename = "meanAnnSst2100.gif")
+
 ```
 
+### Difference in Temp 2020 - 2060, 2020 - 2100
+
+
+```{r}
+
+sstDiffs<-aveSSTdf%>%
+  filter(year==2020)%>%
+  rename(sst2020=aveSST)%>%
+  bind_cols(aveSSTdf%>%
+              filter(year==2060)%>%
+              select(sst2060=aveSST),
+            aveSSTdf%>%
+              filter(year==2100)%>%
+              select(sst2100=aveSST))%>%
+    mutate(diff2060=sst2060-sst2020,
+           diff2100=sst2100-sst2020)
+
+mapDiffs2060<-sstDiffs%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2060),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-10,10),name="Temp (C)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("Projected Change in SST",subtitle = "2020 to 2060")+
+    theme_bw()
+
+mapDiffs2100<-sstDiffs%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2100),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-10,10),name="Temp (C)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("Projected Change in SST",subtitle = "2020 to 2100")+
+    theme_bw()
+
+```
+
+
+```{r}
+
+mapDiffs2060
+
+```
+
+
+```{r}
+
+mapDiffs2100
+
+```
+
+
+###### Delete data file from local
+
+```{r}
+
+if (file.exists(datFile)) {
+ unlink(datFile)
+ cat(paste("The file has been deleted: ",datFile))
+}
+
+```
