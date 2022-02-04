@@ -1,0 +1,275 @@
+---
+title: "Oxygen concentration projections"
+author: "J. L. Couture"
+date: "2/3/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(googledrive)
+library(ncdf4)
+library(mregions)
+library(sf)
+library(ggmap)
+library(viridis)
+library(weathermetrics)
+library(chron)
+library(RColorBrewer)
+library(lattice)
+library(gganimate)
+library(patchwork)
+
+
+```
+
+## CMIP6 SST Data
+
+Data were pulled from the [Earth System Grid Federation]("https://esgf.llnl.gov/") site which houses the CMIP6 database. I have added the SST netCDF file to the google drive `(myDrive > CI > data > climateData > cmip6 > tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_210101-230012.nc)`
+
+```{r getDat}
+
+datFile<-"data/cmip6/o2yr.nc"
+
+drive_download("o2_Oyr_ACCESS-ESM1-5_ssp126_r1i1p1f1_gn_2015-2100.nc",
+                   path=datFile,
+                   overwrite = TRUE)
+
+o2<-nc_open(datFile)
+
+```
+
+```{r pullVars, echo=FALSE}
+
+lon<-ncvar_get(o2,"longitude")
+lat<-ncvar_get(o2,"latitude")
+o2Var<-ncvar_get(o2,"o2") # in degC
+timeBnd<-ncvar_get(o2,"time_bnds")
+depth<-ncvar_get(o2,"lev")
+
+ttl<-ncatt_get(o2,"o2","long_name")
+ttlNm<-as.character(ttl$value)
+
+```
+
+
+```{r}
+
+# EmpowerDat plotting function
+
+mapO2CDF<-function(lat,lon,var,title){
+  
+  titletext <- title
+  expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon),
+           ph=as.vector(t(var)))%>%
+    ggplot()+
+    geom_point(aes(x=lon,y=lat,color=ph),size=1)+
+    borders("world",colour="black",fill="grey")+
+    scale_color_viridis(na.value="white",name="[Oxygen]\n(mol m-3)")+
+    scale_x_continuous(expand = c(0,0))+
+    scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle(titletext)+
+    theme_bw()
+  
+}
+
+mapO2CDF(lat,lon,var=o2Var[,,3,1],ttlNm)
+
+```
+#### Convert arrays to DF
+
+```{r}
+
+## convert the array to df ---> shallow depth: 25m
+o2Dfshallow<-NULL
+
+datesDf<-tibble(date=as_date(timeBnd[1,],origin="1850-01-01"))%>%
+  mutate(year=year(date))
+
+for (i in 1:nrow(datesDf)){ # iterate over years
+    
+    tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
+      mutate(lon=ifelse(lon>180,-(360-lon),lon),
+             o2=as.vector(t(o2Var[,,3,i])))%>% # 3 is depth of 25m
+      mutate(year=as.numeric(datesDf[i,"year"]))
+  
+    o2Dfshallow = o2Dfshallow %>% bind_rows(tempDf)
+}
+
+## Deeper: >425m
+
+o2DfDeep<-NULL
+
+for (i in 1:nrow(datesDf)){ # iterate over years
+    
+    tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
+      mutate(lon=ifelse(lon>180,-(360-lon),lon),
+             o2=as.vector(t(o2Var[,,26,i])))%>% # 26 is depth of 427.3156m
+      mutate(year=as.numeric(datesDf[i,"year"]))
+  
+    o2DfDeep = o2DfDeep %>% bind_rows(tempDf)
+}
+
+
+```
+
+#### Construct GIF
+
+```{r}
+### gganimate
+
+### Shallow
+
+o2sAnim<-ggplot(o2Dfshallow,aes(x=lon,y=lat,color=o2),size=1)+
+  geom_point()+
+  borders("world",colour="black",fill="grey")+
+  scale_color_viridis(na.value="white",name="[Oxygen]\n(mol m-3)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme(legend.direction = "vertical",legend.position = "right")+
+  coord_quickmap()+
+  theme_bw()+
+  labs(title="Annual Dissolved Oxygen Concentration: shallow (25m)",subtitle = "Year: {closest_state}")+
+  transition_states(year,transition_length = 2)
+  
+animate(o2sAnim)
+
+# anim_save(filename = "meanO2conc25m2100.gif")
+
+### Deep
+
+o2dAnim<-ggplot(o2DfDeep,aes(x=lon,y=lat,color=o2),size=1)+
+  geom_point()+
+  borders("world",colour="black",fill="grey")+
+  scale_color_viridis(na.value="white",name="[Oxygen]\n(mol m-3)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme(legend.direction = "vertical",legend.position = "right")+
+  coord_quickmap()+
+  theme_bw()+
+  labs(title="Annual Dissolved Oxygen Concentration: deep (>425m)",subtitle = "Year: {closest_state}")+
+  transition_states(year,transition_length = 2)
+  
+animate(o2dAnim)
+
+# anim_save(filename = "meanO2conc427m2100.gif")
+
+```
+
+
+### Difference in Temp 2020 - 2060, 2020 - 2100
+
+```{r}
+
+o2DiffsSh<-o2Dfshallow%>%
+  filter(year==2020)%>%
+  rename(o22020=o2)%>%
+  bind_cols(o2Dfshallow%>%
+              filter(year==2060)%>%
+              select(o22060=o2),
+            o2Dfshallow%>%
+              filter(year==2100)%>%
+              select(o22100=o2))%>%
+    mutate(diff2060=o22060-o22020,
+           diff2100=o22100-o22020)
+
+o2DiffsDp<-o2DfDeep%>%
+  filter(year==2020)%>%
+  rename(o22020=o2)%>%
+  bind_cols(o2DfDeep%>%
+              filter(year==2060)%>%
+              select(o22060=o2),
+            o2DfDeep%>%
+              filter(year==2100)%>%
+              select(o22100=o2))%>%
+    mutate(diff2060=o22060-o22020,
+           diff2100=o22100-o22020)
+
+mapDiffs2060<-o2DiffsSh%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2060),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-0.1,0.1),name="[Oxygen]\n(mol m-3)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("Projected Change in Oxygen Concentration: shallow (25m)",subtitle = "2020 to 2060")+
+    theme_bw()
+
+mapDiffs2100<-o2DiffsSh%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2100),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-0.1,0.1),name="[Oxygen]\n(mol m-3)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("",subtitle = "2020 to 2100")+
+    theme_bw()
+
+#### at depth
+
+mapDiffs2060dp<-o2DiffsDp%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2060),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-0.1,0.1),name="[Oxygen]\n(mol m-3)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("Projected Change in Oxygen Concentration: deep (>425m)",subtitle = "2020 to 2060")+
+    theme_bw()
+
+mapDiffs2100dp<-o2DiffsDp%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2100),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-0.1,0.1),name="[Oxygen]\n(mol m-3)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("",subtitle = "2020 to 2100")+
+    theme_bw()
+
+```
+
+
+```{r}
+
+mapDiffs2060+mapDiffs2100+
+  plot_layout(guides = "collect")
+
+```
+
+
+```{r}
+
+mapDiffs2060dp+mapDiffs2100dp+
+  plot_layout(guides = "collect")
+
+```
+
+
+###### Delete data file from local
+
+```{r}
+
+if (file.exists(datFile)) {
+ unlink(datFile)
+ cat(paste("The file has been deleted: ",datFile))
+}
+
+```

@@ -13,7 +13,7 @@ library(googledrive)
 library(ncdf4)
 library(mregions)
 library(sf)
-
+library(gganimate)
 ```
 
 ## OA Data
@@ -83,8 +83,6 @@ mapCDF(lat,lon,var=ph[,,1,1])
 
 ```{r}
 
-### animate
-library(gganimate)
 ## convert the array to df
 phDf<-NULL
 
@@ -106,8 +104,12 @@ for (i in 1:10){ # iterate over years
 phDf<-phDf%>%
   mutate(date=paste(month, year, sep = "/"))
 
-### gganimate
+```
 
+
+```{r}
+
+### gganimate
 
 phAnim<-ggplot(phDf,aes(x=lon,y=lat,color=ph),size=1)+
   geom_point()+
