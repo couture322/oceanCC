@@ -45,7 +45,7 @@ sss<-nc_open(datFile)
 lon<-ncvar_get(sss,"longitude")
 lat<-ncvar_get(sss,"latitude")
 sssVar<-ncvar_get(sss,"sos") # in degC
-# timeBnd<-ncvar_get(sst,"time")
+timeBnd<-ncvar_get(sss,"time_bnds")
 # year<-ncvar_get(sst,"Year")
 
 ttl<-ncatt_get(sss,"sos","long_name")
@@ -58,7 +58,7 @@ ttlNm<-as.character(ttl$value)
 
 # EmpowerDat plotting function
 
-mapCDF<-function(lat,lon,var,title){
+mapSalCDF<-function(lat,lon,var,title){
   
   titletext <- title
   expand.grid(lat=lat[1,],lon=lon[,1])%>%
@@ -67,7 +67,9 @@ mapCDF<-function(lat,lon,var,title){
     ggplot()+
     geom_point(aes(x=lon,y=lat,color=ph),size=1)+
     borders("world",colour="black",fill="grey")+
-    scale_color_viridis(na.value="white",name="Surface pH")+
+    scale_color_viridis(na.value="white",name="Surface Salinity\n(ppt)")+
+    scale_x_continuous(expand = c(0,0))+
+    scale_y_continuous(expand = c(0,0))+
     theme(legend.direction = "vertical",legend.position = "right")+
     coord_quickmap()+
     ggtitle(titletext)+
@@ -75,45 +77,138 @@ mapCDF<-function(lat,lon,var,title){
   
 }
 
-mapCDF(lat,lon,var=sss[,,1],ttlNm)
+mapSalCDF(lat,lon,var=sssVar[,,1],ttlNm)
 
 ```
+#### Calculate mean SST across months for each year
 
 ```{r}
 
 ## convert the array to df
-sssDf<-NULL
+
+## calculate mean temperatures for a year and paste into a new DF: aveSSTdf
+
+newYr<-seq(1,length(timeBnd),by=12)
+aveSSSdf<-NULL
+datesDf<-tibble(date=as_date(timeBnd[1,],origin="1850-01-01"))%>%
+  mutate(year=year(date))
 
 
-for(j in 1:12){ # iterate over time
-    
-  tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
-    mutate(lon=ifelse(lon>180,-(360-lon),lon),
-           sst=as.vector(t(sss[,,j])))%>%
-      mutate(day=as.numeric(j))
+for(i in 1:length(newYr)){
   
-  sssDf = sssDf %>% bind_rows(tempDf)    
+  yrDf<-expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon))
+  
+  
+  for(j in 1:12){ # iterate over time
+    k=newYr[i]+j-1
+    
+  monDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
+    mutate(lon=ifelse(lon>180,-(360-lon),lon),
+           sss=as.vector(t(sssVar[,,k])))
+  
+  yrDf = yrDf %>% bind_cols(monDf%>%select(sss))    
+  
+  }
+  yrDf<-yrDf%>%
+    mutate(aveSSS=rowMeans(.[-1:-2],na.rm = TRUE))%>%
+    select(lat,lon,aveSSS)%>%
+    mutate(year=2014+i)#datesDf[k,"year"])
+  
+  aveSSSdf<-aveSSSdf%>%
+    bind_rows(.,yrDf)
+  
+  i=i+1
 }
   
+  
+# testdf<-aveSSSdf%>%
+#   filter(year %in% 2015:2017)
+```
 
+#### Construct GIF
 
+```{r}
 ### gganimate
 
 
-sssAnim<-ggplot(sssDf,aes(x=lon,y=lat,color=sst),size=1)+
+sssAnim<-ggplot(aveSSSdf,aes(x=lon,y=lat,color=aveSSS),size=1)+
   geom_point()+
   borders("world",colour="black",fill="grey")+
-  scale_color_viridis(na.value="white",name="Surface pH")+
+  scale_color_viridis(na.value="white",name="Salinity (ppt)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
   theme(legend.direction = "vertical",legend.position = "right")+
   coord_quickmap()+
   theme_bw()+
-  labs(title=ttlNm,subtitle = "Month: {current_frame}")+
-  transition_manual(day)
+  labs(title="Average Annual Sea Surface Salinity",subtitle = "Year: {closest_state}")+
+  transition_states(year,transition_length = 2)
   
 animate(sssAnim)
 
-# anim_save()
+# anim_save(filename = "meanAnnSss2100.gif")
+
 ```
+
+
+### Difference in Temp 2020 - 2060, 2020 - 2100
+
+```{r}
+
+sssDiffs<-aveSSSdf%>%
+  filter(year==2020)%>%
+  rename(sss2020=aveSSS)%>%
+  bind_cols(aveSSSdf%>%
+              filter(year==2060)%>%
+              select(sss2060=aveSSS),
+            aveSSSdf%>%
+              filter(year==2100)%>%
+              select(sss2100=aveSSS))%>%
+    mutate(diff2060=sss2060-sss2020,
+           diff2100=sss2100-sss2020)
+
+mapDiffs2060<-sssDiffs%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2060),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-5,3),name="Salinity (ppt)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("Projected Change in SSS",subtitle = "2020 to 2060")+
+    theme_bw()
+
+mapDiffs2100<-sssDiffs%>%
+  ggplot()+
+  geom_point(aes(x=lon,y=lat,color=diff2100),size=1)+
+    borders("world",colour="black",fill="grey")+
+    # scale_color_viridis(na.value="white",name="Temperature (C)")+
+  scale_color_gradient2(low="blue4",mid = "white",high = "brown3",midpoint = 0,limits=c(-5,3),name="Salinity (ppt)")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    coord_quickmap()+
+    ggtitle("Projected Change in SSS",subtitle = "2020 to 2100")+
+    theme_bw()
+
+```
+
+
+```{r}
+
+mapDiffs2060
+
+```
+
+
+```{r}
+
+mapDiffs2100
+
+```
+
 
 ###### Delete data file from local
 

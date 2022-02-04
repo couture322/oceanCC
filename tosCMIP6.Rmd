@@ -81,6 +81,7 @@ mapCDF<-function(lat,lon,var,title){
 mapCDF(lat,lon,var=sstVar[,,1],ttlNm)
 
 ```
+#### Calculate mean SST across months for each year
 
 ```{r}
 
@@ -124,7 +125,11 @@ for(i in 1:length(newYr)){
   
 # testdf<-aveSSTdf%>%
 #   filter(year %in% 2015:2020)
+```
 
+#### Construct GIF
+
+```{r}
 ### gganimate
 
 
