@@ -102,7 +102,8 @@ for (i in 1:10){ # iterate over years
 }
 
 phDf<-phDf%>%
-  mutate(date=paste(month, year, sep = "/"))
+  mutate(date=paste(month, year, sep = "/"),
+         lonAdj=ifelse(lon<0,180+(180+lon),lon))
 
 ```
 
@@ -134,6 +135,27 @@ if (file.exists(datFile)) {
  unlink(datFile)
  cat(paste("The file has been deleted: ",datFile))
 }
+
+```
+
+### Lau seascape
+
+```{r}
+
+lauLon<-c(170,190)
+lauLat<-c(-14,-25)
+
+lauPh<-phDf%>%
+  filter(lat<lauLat[1],lat>lauLat[2],lonAdj>lauLon[1],lonAdj<lauLon[2])%>%
+  filter(year==2010)%>%
+  ggplot(aes(x=lonAdj,y=lat,fill=ph),size=1)+
+  geom_tile()+
+  # borders("world",xlim=lauLon,ylim=lauLat,colour="black",fill="grey")+
+  scale_fill_viridis(na.value="white",name="Surface pH")+
+  theme(legend.direction = "vertical",legend.position = "right")+
+  coord_quickmap()+
+  theme_bw()+
+  labs(title="Ocean acidification")
 
 ```
 

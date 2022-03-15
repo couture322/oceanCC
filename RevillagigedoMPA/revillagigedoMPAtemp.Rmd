@@ -1,0 +1,438 @@
+---
+title: 'Revillagigedo MPA: Temperature at depth'
+author: "J. L. Couture"
+date: "3/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(googledrive)
+library(ncdf4)
+library(mregions)
+library(sf)
+library(ggmap)
+library(viridis)
+library(weathermetrics)
+library(chron)
+library(RColorBrewer)
+library(lattice)
+library(gganimate)
+library(lubridate)
+library(raster)
+library(rgdal)
+
+
+```
+
+Here CMIP6 projection data will be used to plot ocean temperatures into the future at the Revillagigedo MPA in the eastern Pacific Ocean. The Revillagigedo MPA protects the Revillagigedo Archipelago which is made up of 4 islands ober 500 km from mainland Mexico (Cabo San Lucas). The MPA protects the convergence of 2 ocean currents which make this an important site for several species, including 26 species of endemic fish, and acts as a wintering and calving area for humpback whales. 
+
+## Access CMIP6 ensamble data from oneDrive
+
+These data were ensambled by Isaac Brito Morales and stored on the Conservation International OneDrive for internal access. Data are of sea water potential temperature (K) modeled at several layers of the pelagic:
+
+- epipelagic
+- mesopelagic
+- bathypelagic
+- seafloor
+
+```{r RevillagigedoMPA}
+
+revShp<-st_read("WDPA_WDOECM_Mar2022_Public_555629385_shp/WDPA_WDOECM_Mar2022_Public_555629385_shp_0/WDPA_WDOECM_Mar2022_Public_555629385_shp-polygons.shp")
+
+revBB<-st_bbox(revShp)
+buff <- 5
+
+ploArea<-st_bbox(c(xmin=as.numeric(revBB$xmin-buff),
+                   xmax=as.numeric(revBB$xmax+buff),
+                   ymin=as.numeric(revBB$ymin-buff),
+                   ymax=as.numeric(revBB$ymax+buff)),crs = st_crs(revShp))
+
+### isolate base layers
+
+mxShp<-map_data("world",region="Mexico")%>%
+  st_as_sf(.,
+           coords=c("long","lat"),
+           crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  group_by(group) %>%
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")%>%
+  st_crop(.,ploArea)
+
+
+# mrRev<-mr_shp(key="MarineRegions:eez",
+#              filter="Mexican Exclusive Economic Zone")%>%
+#   filter(long > as.numeric(ploArea$xmin),
+#          long < as.numeric(ploArea$xmax))%>%
+#   filter(lat > as.numeric(ploArea$ymin),
+#          lat < as.numeric(ploArea$ymax))
+
+```
+
+
+
+```{r getDat-epi}
+
+### read in raster layers and clip to MPA
+
+# raster dimensions are 360 x 720 x 259200 x 1032, likely: lat, lon, ???, month from 2015-2100
+# data are temperature potential in Kelvin (will need to convert to Celcius)
+# is the several (259200) dimensions depth?
+
+datFileE<-"tempDat/thetaoEpi.rds" #where to put it
+
+drive_download("02-ep_thetao_AEMean_ssp585_r1i1p1f1_2015-2100.rds", #raster file
+                   path=datFileE,
+                   overwrite = TRUE)
+
+epiT<-read_rds(datFileE) # raster file
+
+
+### delete large file once the object has been created
+if (file.exists(datFileE)) {
+ unlink(datFileE)
+ cat(paste("The file has been deleted: ",datFileE))
+}
+
+```
+
+
+### testing on one layer 2050
+
+```{r}
+
+
+### test with one raster layer: Jan 2050
+ep50Jan<-epiT[[421]]
+
+ep50jr2<-as(ep50Jan,"SpatialPixelsDataFrame")%>%
+  as.data.frame()%>%
+  filter(x > as.numeric(revBB$xmin)-buff,
+         x < as.numeric(revBB$xmax)+buff)%>%
+  filter(y > as.numeric(revBB$ymin)-buff,
+         y < as.numeric(revBB$ymax)+buff)
+
+colnames(ep50jr2)<-c("temp","lon","lat")
+
+ggplot()+
+  geom_raster(data=ep50jr2,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(21,27))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  ggtitle("Epipelagic: 2050")+
+  theme_bw()
+
+```
+
+```{r}
+
+#### pull 2050 data layers
+
+ep50<-epiT[[421:432]] ### pull just 2050 data
+
+ep50r<-crop(ep50,ploArea)
+
+#### animate the 12 months of 2050 
+
+ep2050<-data.frame()
+
+for(i in 1:nlayers(ep50r)){
+  
+  tmp<-as(ep50r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  ep2050<-bind_rows(ep2050,tmp)
+  
+}
+
+ep2050<-ep2050%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+epi2050Plts <- ggplot()+
+  geom_raster(data=ep2050,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(20,32))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+  theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2050",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+#### save animated plot
+
+# anim_save(filename = "gifs/potTempEpi2050RevMx.gif")
+
+```
+
+```{r}
+
+#### pull 2015 data layers
+
+ep15<-epiT[[1:12]] ### pull just 2050 data
+
+ep15r<-crop(ep15,ploArea)
+
+#### animate the 12 months of 2050 
+
+ep2015<-data.frame()
+
+for(i in 1:nlayers(ep15r)){
+  
+  tmp<-as(ep15r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  ep2015<-bind_rows(ep2015,tmp)
+  
+}
+
+ep2015<-ep2015%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+epi2015Plts <- ggplot()+
+  geom_raster(data=ep2015,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(20,32))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+    theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2015",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+# anim_save(filename = "gifs/potTempEpi2015RevMx.gif")
+
+```
+
+```{r}
+
+#### pull 2100 data layers
+
+ep100<-epiT[[1021:1032]] ### pull just 2050 data
+
+ep100r<-crop(ep100,ploArea)
+
+#### animate the 12 months of 2050 
+
+ep2100<-data.frame()
+
+for(i in 1:nlayers(ep100r)){
+  
+  tmp<-as(ep100r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  ep2100<-bind_rows(ep2100,tmp)
+  
+}
+
+ep2100<-ep2100%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+epi2100Plts <- ggplot()+
+  geom_raster(data=ep2100,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(20,32))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+ 
+  theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2100",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+# anim_save(filename = "gifs/potTempEpi2100RevMx.gif")
+
+```
+
+```{r}
+
+epi2015Plts + epi2050Plts + epi2100Plts +
+  plot_layout(ncol=3,
+              guides="collect")
+
+```
+## Mesopelagic
+
+```{r getDat-mso}
+
+datFileM<-"tempDat/thetaoMso.rds" #where to put it
+
+drive_download("03-mp_thetao_AEMean_ssp585_r1i1p1f1_2015-2100.rds",
+                   path=datFileM,
+                   overwrite = TRUE)
+
+msoT<-read_rds(datFileM) 
+
+### delete large file once the object has been created
+
+if (file.exists(datFileM)) {
+ unlink(datFileM)
+ cat(paste("The file has been deleted: ",datFileM))
+}
+
+```
+
+
+```{r}
+
+#### pull 2050 data layers
+
+ms50<-msoT[[421:432]] ### pull just 2050 data
+
+ms50r<-crop(ms50,ploArea)
+
+#### animate the 12 months of 2050 
+
+ms2050<-data.frame()
+
+for(i in 1:nlayers(ms50r)){
+  
+  tmp<-as(ms50r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  ms2050<-bind_rows(ms2050,tmp)
+  
+}
+
+ms2050<-ms2050%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+mso2050Plts <- ggplot()+
+  geom_raster(data=ms2050,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(10,15.5))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+    theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2050",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+#### save animated plot
+
+# anim_save(filename = "gifs/potTempMso2050RevMx.gif")
+
+```
+
+```{r}
+
+#### pull 2015 data layers
+
+ms15<-msoT[[1:12]] ### pull just 2050 data
+
+ms15r<-crop(ms15,ploArea)
+
+#### animate the 12 months of 2050 
+
+ms2015<-data.frame()
+
+for(i in 1:nlayers(ms15r)){
+  
+  tmp<-as(ms15r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  ms2015<-bind_rows(ms2015,tmp)
+  
+}
+
+ms2015<-ms2015%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+mso2015Plts <- ggplot()+
+  geom_raster(data=ms2015,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(10,15.5))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+    theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2015",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+# anim_save(filename = "gifs/potTempMso2015RevMx.gif")
+
+```
+
+```{r}
+
+#### pull 2100 data layers
+
+ms100<-msoT[[1021:1032]] ### pull just 2050 data
+
+ms100r<-crop(ms100,ploArea)
+
+#### animate the 12 months of 2050 
+
+ms2100<-data.frame()
+
+for(i in 1:nlayers(ms100r)){
+  
+  tmp<-as(ms100r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  ms2100<-bind_rows(ms2100,tmp)
+  
+}
+
+ms2100<-ms2100%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+mso2100Plts <- ggplot()+
+  geom_raster(data=ms2100,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(10,15.5))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+    theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2100",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+# anim_save(filename = "gifs/potTempMso2100RevMx.gif")
+
+```
