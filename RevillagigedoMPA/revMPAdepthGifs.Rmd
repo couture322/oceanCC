@@ -13,16 +13,29 @@ The Revillagigedo MPA protects the Revillagigedo Archipelago which is made up of
 
 ## Epipelagic
 
-```{r, echo=FALSE,out.width="33%",out.height="20%",fig.cap="caption",fig.show='hold',fig.align='center'}
+```{r, echo=FALSE,out.width="33%",out.height="20%",fig.cap="Temperature in degrees Celcius",fig.show='hold',fig.align='center'}
 
 knitr::include_graphics(c("gifs/potTempEpi2015RevMx.gif","gifs/potTempEpi2050RevMx.gif","gifs/potTempEpi2100RevMx.gif"))
 
 ``` 
 
+***
+
 ## Mesopelagic
 
-```{r, echo=FALSE,out.width="33%",out.height="20%",fig.cap="caption",fig.show='hold',fig.align='center'}
+```{r, echo=FALSE,out.width="33%",out.height="20%",fig.cap="Temperature in degrees Celcius",fig.show='hold',fig.align='center'}
 
 knitr::include_graphics(c("gifs/potTempMso2015RevMx.gif","gifs/potTempMso2050RevMx.gif","gifs/potTempMso2100RevMx.gif"))
 
 ``` 
+
+***
+
+## Bathypelagic
+
+```{r, echo=FALSE,out.width="33%",out.height="20%",fig.cap="Temperature in degrees Celcius",fig.show='hold',fig.align='center'}
+
+knitr::include_graphics(c("gifs/potTempBap2015RevMx.gif","gifs/potTempBap2050RevMx.gif","gifs/potTempBap2100RevMx.gif"))
+
+``` 
+

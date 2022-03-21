@@ -436,3 +436,166 @@ mso2100Plts <- ggplot()+
 # anim_save(filename = "gifs/potTempMso2100RevMx.gif")
 
 ```
+
+
+## Bathypelagic
+
+```{r getDat-mso}
+
+datFileB<-"tempDat/thetaoBth.rds" #where to put it
+
+drive_download("04-bap_thetao_AEMean_ssp585_r1i1p1f1_2015-2100.rds",
+                   path=datFileB,
+                   overwrite = TRUE)
+
+bapT<-read_rds(datFileB) 
+
+### delete large file once the object has been created
+
+if (file.exists(datFileB)) {
+ unlink(datFileB)
+ cat(paste("The file has been deleted: ",datFileB))
+}
+
+```
+
+
+```{r}
+
+#### pull 2050 data layers
+
+bp50<-bapT[[421:432]] ### pull just 2050 data
+
+bp50r<-crop(bp50,ploArea)
+
+#### animate the 12 months of 2050 
+
+bp2050<-data.frame()
+
+for(i in 1:nlayers(bp50r)){
+  
+  tmp<-as(bp50r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  bp2050<-bind_rows(bp2050,tmp)
+  
+}
+
+bp2050<-bp2050%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+bap2050Plts <- ggplot()+
+  geom_raster(data=bp2050,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(1,4))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+    theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2050",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+#### save animated plot
+
+# anim_save(filename = "gifs/potTempBap2050RevMx.gif")
+
+```
+
+```{r}
+
+#### pull 2015 data layers
+
+bp15<-bapT[[1:12]] ### pull just 2050 data
+
+bp15r<-crop(bp15,ploArea)
+
+#### animate the 12 months of 2050 
+
+bp2015<-data.frame()
+
+for(i in 1:nlayers(bp15r)){
+  
+  tmp<-as(bp15r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  bp2015<-bind_rows(bp2015,tmp)
+  
+}
+
+bp2015<-bp2015%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+bap2015Plts <- ggplot()+
+  geom_raster(data=bp2015,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(1,4))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+    theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2015",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+# anim_save(filename = "gifs/potTempBap2015RevMx.gif")
+
+```
+
+```{r}
+
+#### pull 2100 data layers
+
+bp100<-bapT[[1021:1032]] ### pull just 2050 data
+
+bp100r<-crop(bp100,ploArea)
+
+#### animate the 12 months of 2050 
+
+bp2100<-data.frame()
+
+for(i in 1:nlayers(bp100r)){
+  
+  tmp<-as(bp100r[[i]],"SpatialPixelsDataFrame")%>%
+    as.data.frame()%>%
+    mutate(mon=i)
+    
+  colnames(tmp)<-c("temp","lon","lat","mon")
+  
+  bp2100<-bind_rows(bp2100,tmp)
+  
+}
+
+bp2100<-bp2100%>%
+  mutate(month=month(mon,label=TRUE,abbr=FALSE))
+
+#### plot
+
+bap2100Plts <- ggplot()+
+  geom_raster(data=bp2100,aes(x=lon,y=lat,fill=temp))+
+  geom_sf(data = revShp,fill=NA, color="white")+
+  geom_sf(data = mxShp,fill="grey",color="black")+
+  scale_fill_viridis_c(limits=c(1,4))+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  theme_bw()+
+    theme(plot.title = element_text(size = 16, face = "bold",hjust = 0.5),
+        plot.subtitle = element_text(size=13, color = "blue4",hjust = 0.5))+
+  labs(title="2100",subtitle = "{closest_state}")+
+  transition_states(month,transition_length = 3)
+
+# anim_save(filename = "gifs/potTempBap2100RevMx.gif")
+
+```
