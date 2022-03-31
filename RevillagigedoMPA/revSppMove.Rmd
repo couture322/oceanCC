@@ -1,0 +1,155 @@
+---
+title: "Testing Spp Distributions"
+author: "J. L. Couture"
+date: "3/22/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Aquamaps data
+
+[Aquamaps](https://www.aquamaps.org/) data (managed by the Environmental Markets Lab at UCSB) provides species range data and estimates into the future based on environmental envelopes and projections of changes to ocean conditions. These estimates are limited, so results are to be treated accordingly. The goals here are to 
+
+1. Plot species richness in an area (current)
+2. Plot estimates of future species richness (2050)
+3. Calcuate changes to richenss at a site
+
+```{r aquamapsData}
+
+### libraries
+library(tidyverse)
+library(googledrive)
+library(sf)
+
+# ### current data
+# datFileNow<-"tempDat/aquamapsNow.csv" #where to put it
+# 
+# drive_download("hcaf_species_native.csv", #csv file
+#                    path=datFileNow,
+#                    overwrite = TRUE)
+# 
+# aqNow<-read_csv(datFileNow)
+# 
+# ### delete large file once the object has been created
+# if (file.exists(datFileNow)) {
+#  unlink(datFileNow)
+#  cat(paste("The file has been deleted: ",datFileNow))
+# }
+
+
+###temp pull in
+# aqNow<-read_csv("tempDat/hcaf_species_native-001.csv",
+#                 col_select = c(SpeciesID,CenterLat,CenterLong,Probability))
+
+# aq50<-read_csv("tempDat/rcp85_hcaf_species_native_2050.csv",
+#                 col_select = c(SpeciesID,CenterLat,CenterLong,Probability))
+
+```
+
+## Revillagigedo MPA species richness
+
+Revillagigedo MPA
+
+```{r RevMPA}
+
+revShp<-st_read("WDPA_WDOECM_Mar2022_Public_555629385_shp/WDPA_WDOECM_Mar2022_Public_555629385_shp_0/WDPA_WDOECM_Mar2022_Public_555629385_shp-polygons.shp")
+
+revBB<-st_bbox(revShp)
+buff <- 5
+
+ploArea<-st_bbox(c(xmin=as.numeric(revBB$xmin-buff),
+                   xmax=as.numeric(revBB$xmax+buff),
+                   ymin=as.numeric(revBB$ymin-buff),
+                   ymax=as.numeric(revBB$ymax+buff)),crs = st_crs(revShp))
+
+### isolate base layers
+
+mxShp<-map_data("world",region="Mexico")%>%
+  st_as_sf(.,
+           coords=c("long","lat"),
+           crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  group_by(group) %>%
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")%>%
+  st_crop(.,ploArea)
+
+```
+
+```{r}
+
+# aqRev<-aqNow%>%
+#   st_as_sf(coords=c("CenterLong","CenterLat"),
+#            crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+#   st_crop(ploArea)
+
+### crop current data to Revillagigedo area
+
+# aqRev<-aqNow%>%
+#   filter(CenterLong>as.numeric(ploArea$xmin),
+#          CenterLong<as.numeric(ploArea$xmax),
+#          CenterLat>as.numeric(ploArea$ymin),
+#          CenterLat<as.numeric(ploArea$ymax))%>%
+#   st_as_sf(coords=c("CenterLong","CenterLat"),
+#            crs=4326)
+# 
+# st_write(aqRev,"data/aquamapsCurrentRev/revAqNow.shp")
+
+### crop future data to Revillagigedo area
+
+# aqRev50<-aq50%>%
+#   filter(CenterLong>as.numeric(ploArea$xmin),
+#          CenterLong<as.numeric(ploArea$xmax),
+#          CenterLat>as.numeric(ploArea$ymin),
+#          CenterLat<as.numeric(ploArea$ymax))%>%
+#   st_as_sf(coords=c("CenterLong","CenterLat"),
+#            crs=4326)
+# 
+# st_write(aqRev50,"data/aquamaps2050Rev/revAq2050.shp")
+
+```
+
+### Changes to species richness
+
+```{r}
+
+aqRev<-read_sf("data/aquamapsCurrentRev/revAqNow.shp")
+aqRev50<-read_sf("data/aquamapsCurrentRev/revAq2050.shp")
+
+revSR<-aqRev%>%
+  mutate(geomID=as.character(geometry))%>%
+  group_by(geomID)%>%
+  summarise(speciesRich=n())
+
+revSR50<-aqRev50%>%
+  mutate(geomID=as.character(geometry))%>%
+  group_by(geomID)%>%
+  summarise(speciesRich=n())
+
+revSRdiff<-revSR%>%
+  rename(srNow=speciesRich)%>%
+  st_join(.,revSR50)%>%
+  mutate(srDiff=speciesRich-srNow,
+         lon=st_coordinates(.)[,1],
+           lat=st_coordinates(.)[,2])
+  
+```
+
+```{r}
+
+sppRichRev<-ggplot()+
+  geom_tile(data=revSRdiff,aes(x=lon,y=lat,fill=srDiff),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichRev
+
+```
+

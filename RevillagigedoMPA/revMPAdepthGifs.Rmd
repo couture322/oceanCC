@@ -39,3 +39,8 @@ knitr::include_graphics(c("gifs/potTempBap2015RevMx.gif","gifs/potTempBap2050Rev
 
 ``` 
 
+***
+
+## Projected changes in Species Richness
+
+![](revDeltaSppRich.png)
