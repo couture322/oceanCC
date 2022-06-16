@@ -116,7 +116,7 @@ mxShp<-map_data("world",region="Mexico")%>%
 ```{r}
 
 aqRev<-read_sf("data/aquamapsCurrentRev/revAqNow.shp")
-aqRev50<-read_sf("data/aquamapsCurrentRev/revAq2050.shp")
+aqRev50<-read_sf("data/aquamaps2050Rev/revAq2050.shp")
 
 revSR<-aqRev%>%
   mutate(geomID=as.character(geometry))%>%
@@ -150,6 +150,172 @@ sppRichRev<-ggplot()+
   theme_bw()
   
 sppRichRev
+
+```
+
+#### Applying thresholds to species presence in richness calculations
+
+Below tests several threshold levels and compares them
+
+**Thresholds tested:**
+
+* 0.4
+* 0.5
+* 0.6
+* 0.7
+
+```{r}
+
+thrsh<-c(0.4,0.5,0.6,0.7)
+
+thrshDf<-revSRdiff%>%
+  select(srNow,speciesRich,srDiff,lon,lat)
+
+for(i in 1:length(thrsh)){
+  
+  colnm<-paste("srDiff",3+i,sep="")
+  
+  tmpSR<-aqRev%>%
+    filter(Prbblty >= thrsh[i])%>%
+    mutate(geomID=as.character(geometry))%>%
+    group_by(geomID)%>%
+    summarise(sr=n())%>%
+    select(-geomID)
+
+  tmpSR50<-aqRev50%>%
+    filter(Prbblty >= thrsh[i])%>%
+    mutate(geomID=as.character(geometry))%>%
+    group_by(geomID)%>%
+    summarise(sr50=n())%>%
+    select(-geomID)
+
+  tmpSRdiff<-tmpSR%>%
+    st_join(.,tmpSR50)%>%
+    mutate(!!colnm := sr50-sr)%>%
+    select(-c(sr,sr50))
+  
+  thrshDf<-thrshDf%>%
+    st_join(.,tmpSRdiff)
+  
+}
+
+
+```
+
+```{r}
+
+sppRichRev4<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff5),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.4 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichRev4
+
+sppRichRev5<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff5),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.5 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichRev5
+
+sppRichRev6<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff6),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.6 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichRev6
+
+sppRichRev7<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff7),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.7 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichRev7
+
+```
+
+### Invasions and losses from the MPA
+
+```{r}
+
+spLs<-aqRev%>%
+  filter(Prbblty>=0.5)%>% # 50% probability threshold
+  st_crop(revShp)%>%
+  group_by(SpecsID)%>%
+  summarise(howComm=sum(Prbblty))%>%
+  # select(SpecsID)%>%
+  st_drop_geometry()
+
+spLs50<-aqRev50%>%
+  filter(Prbblty>=0.5)%>% # 50% probability threshold
+  st_crop(revShp)%>%
+  group_by(SpecsID)%>%
+  summarise(howComm50=sum(Prbblty))%>%
+  # select(SpecsID)%>%
+  st_drop_geometry()
+
+# aqSpp<-read_csv("data/speciesoccursum.csv")
+
+revSpLoss<-anti_join(spLs,spLs50)%>%
+  rename(SpeciesID=SpecsID)%>%
+  left_join(.,aqSpp%>%
+              select(SpeciesID, Genus, Species,FBname))%>%
+  arrange(desc(howComm))
+
+revSpGain<-anti_join(spLs50,spLs)%>%
+  rename(SpeciesID=SpecsID)%>%
+  left_join(.,aqSpp%>%
+              select(SpeciesID, Genus, Species,FBname))%>%
+  arrange(desc(howComm50))
+
+revSpShifts<-revSpLoss%>%
+  mutate(direction="lost")%>%
+  bind_rows(.,revSpGain%>%
+              rename(howComm=howComm50)%>%
+              mutate(direction="intro"))
+# write_csv(revSpShifts,"revAqmapSppShifts_thresh50.csv")  
+
+```
+
+### Economically relevant species
+
+Quick look at fishing in the area on the [Global Fishing Water data portal](https://globalfishingwatch.org/map/fishing-activity/udw-revillagigedo_mpa-public?latitude=17.32905138377592&longitude=-111.75727212017733&zoom=5.398953867584273&start=2021-06-13T00%3A00%3A00.000Z&end=2022-06-13T00%3A00%3A00.000Z&bivariateDataviews[0]=fishing-ais&bivariateDataviews[1]=vms&dvIn[0][id]=highlight-sar-match&dvIn[0][cfg][vis]=false&dvIn[1][id]=viirs&dvIn[1][cfg][vis]=false&dvIn[2][id]=presence&dvIn[2][cfg][vis]=false) shows that *tuna purse seining* is the main fishing gear in the area. This gear target tuna and mackerel species, with fall into one of the following genus':
+
+```{r}
+
+tunMacs<-data.frame(genus=c("Thunnus","Neothunnus","Allothunnus","Auxis","Euthynnus","Katsuwonus","Rastrelliger","Scomber","Acanthocybium","Grammatorcynus","Scomberomorus"),
+                    fish=c(rep("tuna",6),rep("mackerel",5)))
+
+kable(tunMacs)
+
+```
+
+```{r}
+
+fishedChg<-revSpShifts%>%
+  filter(Genus %in% tunMacs$genus)
+
+kable(fishedChg)
 
 ```
 

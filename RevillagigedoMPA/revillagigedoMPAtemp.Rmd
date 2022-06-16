@@ -83,7 +83,7 @@ mxShp<-map_data("world",region="Mexico")%>%
 
 datFileE<-"tempDat/thetaoEpi.rds" #where to put it
 
-drive_download("02-ep_thetao_AEMean_ssp585_r1i1p1f1_2015-2100.rds", #raster file
+drive_download("tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_201501-210012", #nc file
                    path=datFileE,
                    overwrite = TRUE)
 
