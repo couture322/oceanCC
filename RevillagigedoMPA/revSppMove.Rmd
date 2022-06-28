@@ -1,12 +1,13 @@
 ---
 title: "Testing Spp Distributions"
-author: "J. L. Couture"
-date: "3/22/2022"
-output: html_document
+output:
+  html_document:
+    code_folding: hide
+    fig_width: 12
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,message = FALSE,warning = FALSE)
 ```
 
 ## Aquamaps data
@@ -15,7 +16,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 1. Plot species richness in an area (current)
 2. Plot estimates of future species richness (2050)
-3. Calcuate changes to richenss at a site
+3. Calculate changes to richness at a site
+4. Identify major fisheries in the MPA
+5. Highlight changes in major fisheries by 2050
 
 ```{r aquamapsData}
 
@@ -23,6 +26,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(googledrive)
 library(sf)
+library(kableExtra)
+library(patchwork)
 
 # ### current data
 # datFileNow<-"tempDat/aquamapsNow.csv" #where to put it
@@ -117,6 +122,7 @@ mxShp<-map_data("world",region="Mexico")%>%
 
 aqRev<-read_sf("data/aquamapsCurrentRev/revAqNow.shp")
 aqRev50<-read_sf("data/aquamaps2050Rev/revAq2050.shp")
+aqSpp<-read_csv("data/speciesoccursum.csv")
 
 revSR<-aqRev%>%
   mutate(geomID=as.character(geometry))%>%
@@ -274,8 +280,6 @@ spLs50<-aqRev50%>%
   # select(SpecsID)%>%
   st_drop_geometry()
 
-# aqSpp<-read_csv("data/speciesoccursum.csv")
-
 revSpLoss<-anti_join(spLs,spLs50)%>%
   rename(SpeciesID=SpecsID)%>%
   left_join(.,aqSpp%>%
@@ -299,7 +303,7 @@ revSpShifts<-revSpLoss%>%
 
 ### Economically relevant species
 
-Quick look at fishing in the area on the [Global Fishing Water data portal](https://globalfishingwatch.org/map/fishing-activity/udw-revillagigedo_mpa-public?latitude=17.32905138377592&longitude=-111.75727212017733&zoom=5.398953867584273&start=2021-06-13T00%3A00%3A00.000Z&end=2022-06-13T00%3A00%3A00.000Z&bivariateDataviews[0]=fishing-ais&bivariateDataviews[1]=vms&dvIn[0][id]=highlight-sar-match&dvIn[0][cfg][vis]=false&dvIn[1][id]=viirs&dvIn[1][cfg][vis]=false&dvIn[2][id]=presence&dvIn[2][cfg][vis]=false) shows that *tuna purse seining* is the main fishing gear in the area. This gear target tuna and mackerel species, with fall into one of the following genus':
+Quick look at fishing in the area on the [Global Fishing Water data portal](https://globalfishingwatch.org/map/fishing-activity/udw-revillagigedo_mpa-public?latitude=17.32905138377592&longitude=-111.75727212017733&zoom=5.398953867584273&start=2021-06-13T00%3A00%3A00.000Z&end=2022-06-13T00%3A00%3A00.000Z&bivariateDataviews[0]=fishing-ais&bivariateDataviews[1]=vms&dvIn[0][id]=highlight-sar-match&dvIn[0][cfg][vis]=false&dvIn[1][id]=viirs&dvIn[1][cfg][vis]=false&dvIn[2][id]=presence&dvIn[2][cfg][vis]=false) shows that *tuna purse seining* is the main fishing gear in the area. This gear target tuna and mackerel species, which fall into one of the following genus':
 
 ```{r}
 
@@ -319,3 +323,147 @@ kable(fishedChg)
 
 ```
 
+#### What's going to happen to these tuna fisheries?
+
+```{r}
+
+tunDist<-aqRev%>%
+  mutate(year=2019)%>%
+  bind_rows(aqRev50%>%mutate(year=2050))%>%
+  mutate(lon=st_coordinates(.)[,1],
+           lat=st_coordinates(.)[,2])%>%
+  filter(SpecsID %in% fishedChg$SpeciesID)
+
+```
+
+```{r}
+
+
+tun1n<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[1],
+         year==2019)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="Friget Tuna", subtitle = "2019",x="longitude",y="latitude")+
+  theme_bw()
+
+tun1f<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[1],
+         year==2050)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="\n", subtitle = "2050",x="longitude",y="latitude")+
+  theme_bw()
+
+tun1n+tun1f+plot_layout(guides = "collect")
+
+```
+
+```{r}
+
+
+tun2n<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[2],
+         year==2019)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="Black skipjack", subtitle = "2019",x="longitude",y="latitude")+
+  theme_bw()
+
+tun2f<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[2],
+         year==2050)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="\n", subtitle = "2050",x="longitude",y="latitude")+
+  theme_bw()
+
+tun2n+tun2f+plot_layout(guides = "collect")
+
+```
+
+```{r}
+
+
+tun3n<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[3],
+         year==2019)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="Chub mackerel", subtitle = "2019",x="longitude",y="latitude")+
+  theme_bw()
+
+tun3f<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[3],
+         year==2050)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="\n", subtitle = "2050",x="longitude",y="latitude")+
+  theme_bw()
+
+tun3n+tun3f+plot_layout(guides = "collect")
+
+```
+
+```{r}
+
+
+tun4n<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[4],
+         year==2019)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="Pacific sierra", subtitle = "2019",x="longitude",y="latitude")+
+  theme_bw()
+
+tun4f<-tunDist%>%
+  filter(SpecsID == fishedChg$SpeciesID[4],
+         year==2050)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="\n", subtitle = "2050",x="longitude",y="latitude")+
+  theme_bw()
+
+tun4n+tun4f+plot_layout(guides = "collect")
+
+```
