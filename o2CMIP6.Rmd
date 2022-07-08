@@ -21,11 +21,12 @@ library(RColorBrewer)
 library(lattice)
 library(gganimate)
 library(patchwork)
+library(lubridate)
 
 
 ```
 
-## CMIP6 SST Data
+## CMIP6 Dissolved Oxygen Concentration Data
 
 Data were pulled from the [Earth System Grid Federation]("https://esgf.llnl.gov/") site which houses the CMIP6 database. I have added the SST netCDF file to the google drive `(myDrive > CI > data > climateData > cmip6 > tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_210101-230012.nc)`
 
@@ -45,7 +46,7 @@ o2<-nc_open(datFile)
 
 lon<-ncvar_get(o2,"longitude")
 lat<-ncvar_get(o2,"latitude")
-o2Var<-ncvar_get(o2,"o2") # in degC
+o2Var<-ncvar_get(o2,"o2") # in mole concentration of dissolved oxygen in sea water
 timeBnd<-ncvar_get(o2,"time_bnds")
 depth<-ncvar_get(o2,"lev")
 
@@ -271,5 +272,102 @@ if (file.exists(datFile)) {
  unlink(datFile)
  cat(paste("The file has been deleted: ",datFile))
 }
+
+```
+
+#### Revillagigedo MPA
+
+```{r RevillagigedoMPA}
+
+revShp<-st_read("RevillagigedoMPA/WDPA_WDOECM_Mar2022_Public_555629385_shp/WDPA_WDOECM_Mar2022_Public_555629385_shp_0/WDPA_WDOECM_Mar2022_Public_555629385_shp-polygons.shp")
+
+revBB<-st_bbox(revShp)
+buff <- 7
+
+ploArea<-st_bbox(c(xmin=as.numeric(revBB$xmin-buff),
+                   xmax=as.numeric(revBB$xmax+buff),
+                   ymin=as.numeric(revBB$ymin-buff),
+                   ymax=as.numeric(revBB$ymax+buff)),crs = st_crs(revShp))
+
+### isolate base layers
+
+mxShp<-map_data("world",region="Mexico")%>%
+  st_as_sf(.,
+           coords=c("long","lat"),
+           crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  group_by(group) %>%
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")%>%
+  st_crop(.,ploArea)
+
+
+# mrRev<-mr_shp(key="MarineRegions:eez",
+#              filter="Mexican Exclusive Economic Zone")%>%
+#   filter(long > as.numeric(ploArea$xmin),
+#          long < as.numeric(ploArea$xmax))%>%
+#   filter(lat > as.numeric(ploArea$ymin),
+#          lat < as.numeric(ploArea$ymax)) ### doesn't show up on map, all ploArea is within the eez and doesn't cross the boundary
+
+```
+
+```{r}
+
+### isloate rev data from o2 (shallow) data
+
+o2Rev<-o2DiffsSh%>%
+  filter(lon>as.numeric(ploArea$xmin),
+         lon<as.numeric(ploArea$xmax),
+         lat>as.numeric(ploArea$ymin),
+         lat<as.numeric(ploArea$ymax))%>%
+  # st_as_sf(coords=c("lon","lat"),
+  #          crs=4326)
+  mutate(ave2020=mean(o22020,na.rm=T),
+         o2perc60=(diff2060/ave2020)*100)
+  
+```
+
+```{r}
+
+o2DiffShRev<-ggplot()+
+  geom_tile(data=o2Rev,aes(x=lon,y=lat,fill=o2perc60),width=1,height=1)+
+    # geom_sf(mxShp,colour="black",fill="grey")+
+    geom_sf(data=revShp,color="white",fill=NA)+
+  geom_sf(data=mxShp)+
+  # geom_sf(data=mrRev)+
+  # scale_fill_viridis_c(limits=c(0,0.25),direction=-1,name="[Oxygen]\n(mol m-3)")+
+  scale_fill_gradient2(low = "#0a6165",high = "#da4325",mid = "#e7e1bc",midpoint = 0,name="% change in\n[oxygen]")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0),limits = c(ploArea$ymin,ploArea$ymax+0.1))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    ggtitle("Projected Change in Oxygen Concentration: shallow (25m)",subtitle = "2020 to 2060")+
+    theme_bw()
+  
+o2DiffShRev
+
+```
+
+```{r}
+
+o2DiffDpRev<-o2DiffsDp%>%
+  filter(lon>as.numeric(ploArea$xmin),
+         lon<as.numeric(ploArea$xmax),
+         lat>as.numeric(ploArea$ymin),
+         lat<as.numeric(ploArea$ymax))%>%
+   mutate(ave2020=mean(o22020,na.rm=T),
+         o2perc60=(diff2060/ave2020)*100)%>%
+  ggplot()+
+  geom_tile(data=o2Rev,aes(x=lon,y=lat,fill=o2perc60),width=1,height=1)+
+    # geom_sf(mxShp,colour="black",fill="grey")+
+    geom_sf(data=revShp,color="white",fill=NA)+
+  geom_sf(data=mxShp)+
+  # scale_fill_viridis_c(limits=c(0,0.25),direction=-1,name="[Oxygen]\n(mol m-3)")+
+  scale_fill_gradient2(low = "#0a6165",high = "#da4325",mid = "#e7e1bc",midpoint = 0,name="% change in\n[oxygen]")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0),limits = c(ploArea$ymin,ploArea$ymax+0.1))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    ggtitle("Projected Change in Oxygen Concentration: deep (>425m)",subtitle = "2020 to 2060")+
+    theme_bw()
+  
+o2DiffDpRev
 
 ```

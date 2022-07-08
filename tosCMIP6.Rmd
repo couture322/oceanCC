@@ -89,7 +89,7 @@ mapCDF(lat,lon,var=sstVar[,,1],ttlNm)
 
 ## calculate mean temperatures for a year and paste into a new DF: aveSSTdf
 
-newYr<-seq(1,length(timeBnd),by=12)
+newYr<-seq(1,nrow(timeBnd),by=12)
 aveSSTdf<-NULL
 datesDf<-tibble(date=as_date(timeBnd[1,],origin="1850-01-01"))%>%
   mutate(year=year(date))
@@ -219,5 +219,75 @@ if (file.exists(datFile)) {
  unlink(datFile)
  cat(paste("The file has been deleted: ",datFile))
 }
+
+```
+
+
+#### Revillagigedo MPA
+
+```{r RevillagigedoMPA}
+
+revShp<-st_read("RevillagigedoMPA/WDPA_WDOECM_Mar2022_Public_555629385_shp/WDPA_WDOECM_Mar2022_Public_555629385_shp_0/WDPA_WDOECM_Mar2022_Public_555629385_shp-polygons.shp")
+
+revBB<-st_bbox(revShp)
+buff <- 7
+
+ploArea<-st_bbox(c(xmin=as.numeric(revBB$xmin-buff),
+                   xmax=as.numeric(revBB$xmax+buff),
+                   ymin=as.numeric(revBB$ymin-buff),
+                   ymax=as.numeric(revBB$ymax+buff)),crs = st_crs(revShp))
+
+### isolate base layers
+
+mxShp<-map_data("world",region="Mexico")%>%
+  st_as_sf(.,
+           coords=c("long","lat"),
+           crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  group_by(group) %>%
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")%>%
+  st_crop(.,ploArea)
+
+
+# mrRev<-mr_shp(key="MarineRegions:eez",
+#              filter="Mexican Exclusive Economic Zone")%>%
+#   filter(long > as.numeric(ploArea$xmin),
+#          long < as.numeric(ploArea$xmax))%>%
+#   filter(lat > as.numeric(ploArea$ymin),
+#          lat < as.numeric(ploArea$ymax)) ### doesn't show up on map, all ploArea is within the eez and doesn't cross the boundary
+
+```
+
+```{r}
+
+### isloate rev data from global sst data
+
+sstRev<-sstDiffs%>%
+  filter(lon>as.numeric(ploArea$xmin),
+         lon<as.numeric(ploArea$xmax),
+         lat>as.numeric(ploArea$ymin),
+         lat<as.numeric(ploArea$ymax))#%>%
+  # st_as_sf(coords=c("lon","lat"),
+  #          crs=4326)
+
+```
+
+```{r}
+
+sstRevPlt<-ggplot()+
+  geom_tile(data=sstRev,aes(x=lon,y=lat,fill=diff2060),width=1,height=1)+
+    # geom_sf(mxShp,colour="black",fill="grey")+
+    geom_sf(data=revShp,color="white",fill=NA)+
+  geom_sf(data=mxShp)+
+  # geom_sf(data=mrRev)+
+  # scale_fill_viridis_c(limits=c(0,2.1),name="degC")+
+  scale_fill_gradient(high = "#da4325",low = "#e7e1bc",name="degC")+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0),limits = c(ploArea$ymin,ploArea$ymax+0.1))+
+    theme(legend.direction = "vertical",legend.position = "right")+
+    ggtitle("Projected Change in Sea Surface Temperature",subtitle = "2020 to 2060")+
+    theme_bw()
+  
+sstRevPlt
 
 ```
