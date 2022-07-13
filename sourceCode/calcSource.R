@@ -28,24 +28,27 @@ library(lubridate)
 # zoomLat = latitudinal buffer for the entire extent map in decimal degrees (size depends on context extent map scale)
 # zoomLon = longitudinal buffer for the entire extent map in decimal degrees (size depends on context extent map scale)
 
-# output ggplot map object with MPA shapefile, plot area and surrounding countries plotted
-# !!! NOT coded for sites that cross the 180 meridian (like the Lau Seascape, see LauCC for this code)
+# output: ggplot map object with MPA shapefile, plot area and surrounding countries plotted
 
-extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lonFx")){
+
+extMapFunc<-function(mpaShp,buff,zoomLat,zoomLon,corr=c(NA,"lonFx")){
   
-  mpa<-mpaShp%>%
-    st_set_crs("EPSG 4326")#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-  
-  if(corr=="lonFx") {
-    mpa<-mpa%>%
+  if(is.na(corr)) {
+   
+     mpa<-mpaShp%>%
+      st_set_crs(4326)#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+    
+  } else {
+    mpa<-mpaShp%>%
+      st_set_crs(4326)%>%
       st_cast(to="POINT")%>% # convert polygons to points
       mutate(lon=st_coordinates(geometry)[,"X"] ,
              lat=st_coordinates(geometry)[,"Y"])%>%
       mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
                             TRUE ~ lon))%>%
       st_drop_geometry()%>%
-      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(mpaShp)[1])
-    # st_crs(crs=4326)#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(mpaShp)[1])%>%
+      st_set_crs(4326)
   }
   
   siteBB<-st_bbox(mpa)
@@ -56,7 +59,7 @@ extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lo
                        ymin=as.numeric(siteBB$ymin-buff),
                        ymax=as.numeric(siteBB$ymax+buff)),
                      crs = st_crs(mpa))
-  } else {if(corr=="lonFx") {
+  } else {
     ploArea<-st_bbox(c(xmin=as.numeric(ifelse(siteBB$xmin<0,
                                               180+(180+siteBB$xmin),
                                               siteBB$xmin)-buff),
@@ -66,7 +69,6 @@ extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lo
                        ymin=as.numeric(siteBB$ymin-buff),
                        ymax=as.numeric(siteBB$ymax+buff)),
                      crs = st_crs(mpa))
-  } 
   }
   
   bbDf<-data.frame(lon=c(as.numeric(ploArea$xmin),
@@ -77,12 +79,15 @@ extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lo
                          as.numeric(ploArea$ymin),
                          as.numeric(ploArea$ymax),
                          as.numeric(ploArea$ymax)))%>%
-    st_as_sf(.,
-             coords=c("lon","lat"))%>%
-    mutate(id=1)%>%
-    group_by(id)%>%
-    summarise()%>%
-    st_convex_hull()
+   sfheaders::sf_polygon()%>%
+    st_set_crs(4326)
+     # st_as_sf(.,
+    #          coords=c("lon","lat"),
+    #          crs=st_crs(mpa))%>%
+    # mutate(id=1)%>%
+    # group_by(id)%>%
+    # # summarise()%>%
+    # st_convex_hull()
   # st_cast("POLYGON")
   
   
@@ -92,7 +97,7 @@ extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lo
                        xmax=as.numeric(siteBB$xmax+zoomLon),
                        ymin=as.numeric(siteBB$ymin-zoomLat),
                        ymax=as.numeric(siteBB$ymax+zoomLat)),crs = st_crs(mpa))
-  } else {if(corr=="lonFx") {
+  } else {
     totArea<-st_bbox(c(xmin=ifelse(as.numeric(siteBB$xmin)<0,
                                    180+(180+as.numeric(siteBB$xmin)),
                                    as.numeric(siteBB$xmin))-zoomLon,
@@ -102,7 +107,6 @@ extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lo
                        ymin=as.numeric(siteBB$ymin)-zoomLat,
                        ymax=as.numeric(siteBB$ymax)+zoomLat),
                      crs = st_crs(mpa))
-  }
   }
   
   ### crop base layers from world map
@@ -129,42 +133,58 @@ extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lo
                             TRUE ~ lon))%>%
       filter(lon2>totArea$xmin & lon2<totArea$xmax,
              lat>totArea$ymin & lat<totArea$ymax)%>%
-      st_drop_geometry()%>%
+      # st_drop_geometry()%>%
+      group_by(subregion)%>%
+      mutate(dup=n()>3)%>%
+      filter(dup==TRUE)%>%
+      ungroup()%>%
       sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id="group")%>%
-      st_make_valid()
+      # st_make_valid()%>%
+      st_set_crs(4326)
     
   }
   
+  ### pull EEZ shp file from the marine regions data
+  # having a lot of trouble with the mregions package, removing for now
   
-  mrEezName<-mr_geo_code(place = mrSearch, like = TRUE, fuzzy = FALSE)%>%filter(placeType=="EEZ")%>%select(accepted)%>%as.numeric()
-  
-  siteEez<-mr_shp(key="MarineRegions:eez",filter=mrEezName)%>%
-    st_as_sf(.,
-             crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-  
-  if(corr=="lonFx") {
-    siteEez<-siteEez%>%
-      st_as_sf(.,
-               coords=c("long","lat"),
-               crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
-      st_cast(to="POINT")%>% # convert polygons to points
-      mutate(lon=st_coordinates(geometry)[,"X"] ,
-             lat=st_coordinates(geometry)[,"Y"])%>%
-      mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
-                            TRUE ~ lon))%>%
-      st_drop_geometry()%>%
-      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(siteEez)[1])
-  }
-  
+  # mrEezName<-mr_geo_code(place = mrSearch, like = TRUE, fuzzy = FALSE)%>%
+  #   filter(placeType=="EEZ")%>%
+  #   select(accepted)%>%
+  #   as.numeric()
+  # 
+  # 
+  # if(is.na(corr)) {
+  #   
+  #   siteEez<-mr_shp(key="MarineRegions:eez",filter=8429)%>%
+  #     st_as_sf(.,
+  #              coords=c("long","lat"),
+  #              crs=4326)
+  #   
+  # } else {
+  #   siteEez<-mr_shp(key="MarineRegions:eez",filter=mrEezName)%>%
+  #     st_as_sf(.,
+  #              coords=c("long","lat"),
+  #              crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  #     st_cast(to="POINT")%>% # convert polygons to points
+  #     mutate(lon=st_coordinates(geometry)[,"X"] ,
+  #            lat=st_coordinates(geometry)[,"Y"])%>%
+  #     mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
+  #                           TRUE ~ lon))%>%
+  #     st_drop_geometry()%>%
+  #     sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(siteEez)[1])
+  # }
+
   extMap<-ggplot()+
-    geom_sf(data=geoShp,fill="grey")+
-    geom_sf(data=siteEez,fill="grey33",color=NA,alpha=0.3)+
+    geom_sf(data=geoShp)+
+    # geom_sf(data=siteEez,fill="grey33",color=NA,alpha=0.3)+
     geom_sf(data=mpa,fill="deepskyblue3",alpha=0.3,color="deepskyblue4",linetype=2)+
-    geom_sf(data=bbDf,fill=NA,color="darkorange3",linetype=2)+
-    scale_x_continuous(expand = c(0,0),limits = c(totArea$xmin,totArea$xmax))+
+    geom_sf(data=bbDf,fill=NA,color="darkorange3")+
+    annotate(geom="text", x=ploArea$xmin+5, y=ploArea$ymin-1, label="Area assessed",
+             color="darkorange3")+
+    scale_x_continuous(expand = c(0,0),limits = c(totArea$xmin,totArea$xmax),breaks=seq(round(totArea$xmin,digits = 0.1),round(totArea$xmax,digits = 0.1),by=10))+
     scale_y_continuous(expand = c(0,0),limits = c(totArea$ymin,totArea$ymax))+
     theme_bw()+
-    labs(subtitle = "Extent map",title=siteName,x="longitude",y="latitude")
+    labs(title = "Extent map",x="longitude",y="latitude")
   
   return(extMap)
   
@@ -182,26 +202,30 @@ extMapFunc<-function(mpaShp,siteName,mrSearch,buff,zoomLat,zoomLon,corr=c(NA,"lo
 # YEAR = year in the future for analysis from 2020 - 2100, default is 2050
 # corr = indicates whether longitude (lonFx) needs to be corrected for crossing the 180 meridian, if no use NA
 
-# output ggplot map object with MPA shapefile, plot area and surrounding countries plotted
-# !!! NOT coded for sites that cross the 180 meridian (like the Lau Seascape, see LauCC for this code)
+# output: ggplot map object with MPA shapefile and projected temperature and indicated depth range in 2050
+
 
 
 temp3dPlots<-function(mpaShp,buff,targDepth=c("epi","meso","bathy"),YEAR = 2050,corr=c(NA, "lonFx")){
   
   
   ### set bounding box for target area
-  mpa<-mpaShp%>%
-    st_set_crs("EPSG 4326")
-  
-  if(corr=="lonFx") {
-    mpa<-mpa%>%
+ if(is.na(corr)) {
+   
+   mpa<-mpaShp%>%
+    st_set_crs(4326)
+   
+ } else {
+    
+   mpa<-mpaShp%>%
       st_cast(to="POINT")%>% # convert polygons to points
       mutate(lon=st_coordinates(geometry)[,"X"] ,
              lat=st_coordinates(geometry)[,"Y"])%>%
       mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
                             TRUE ~ lon))%>%
       st_drop_geometry()%>%
-      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(mpaShp)[1])
+      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(mpaShp)[1])%>%
+      st_set_crs(4326)
   }
   
   siteBB<-st_bbox(mpa)
@@ -292,7 +316,14 @@ temp3dPlots<-function(mpaShp,buff,targDepth=c("epi","meso","bathy"),YEAR = 2050,
   
   ### convert raster to dataframe for ggplotting
   
-  if(corr=="lonFx") {
+  if(is.na(corr)) {
+    
+    dTempSpDf<-crop(dTempRast,ploArea)%>% # crop to intended area
+      as.data.frame(.,xy=TRUE)%>% ## convert to df
+      rename(lon=x,
+             lat=y)
+    
+  } else {
     
     dTempSpDf<-dTempRast%>%
       as.data.frame(.,xy=TRUE)%>%
@@ -303,13 +334,6 @@ temp3dPlots<-function(mpaShp,buff,targDepth=c("epi","meso","bathy"),YEAR = 2050,
              lon<ploArea["xmax"],
              lat>ploArea["ymin"],
              lat<ploArea["ymax"])
-    
-  } else {
-    
-    dTempSpDf<-crop(dTempRast,ploArea)%>% # crop to intended area
-      as.data.frame(.,xy=TRUE)%>% ## convert to df
-      rename(lon=x,
-             lat=y)
     
   }
   
@@ -343,11 +367,11 @@ temp3dPlots<-function(mpaShp,buff,targDepth=c("epi","meso","bathy"),YEAR = 2050,
 # mpaShp = sf object of MPA shape file
 # buff = distance around mpa shape file for which analysis is conducted (to calculate extent box, "ploArea"). In decimal degrees (numeric)
 # siteName = short code for site name to be used in the name of the output file (string with no spaces)
-# nowFut = one of "now" for data from 2019 or "future" for data projections, to indicate which dataset to pull from 
+# var = one of "tos" (SST), "sos" (SSSal), "o2" ([oxygen]) variables to plot.SST and SSS data are by definition only calculated at one depth (0m) and oxygen concentration is assessed at shallow and deep 
 # corr = indicates whether longitude (lonFx) needs to be corrected for crossing the 180 meridian, if no use NA
 
-# output: new csv file with species that intsect with the indicated site area (shapefile + buffer)
-# !!! NOT coded for sites that cross the 180 meridian (like the Lau Seascape, see LauCC for this code)
+# output: returns 1 or 2 plots of the projected metrics around the input MPA site
+
 
 noaaCMIP6<-function(mpaShp,
                     buff,
@@ -356,7 +380,7 @@ noaaCMIP6<-function(mpaShp,
                     corr=c(NA,"lonFx")) {
 
   ### pull in global data from the drive based on indicated variable (var)
-  datFile<-"data/cmip6/noaaTmp.nc"
+  datFile<-"data/tempDat/noaaTmp.nc"
   
   driveFile<-if(var=="tos") {
     "tos_Omon_ACCESS-CM2_ssp126_r1i1p1f1_gn_201501-210012.nc"
@@ -438,7 +462,7 @@ noaaCMIP6<-function(mpaShp,
       
       tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
         mutate(lon=ifelse(lon>180,-(360-lon),lon),
-               o2=as.vector(t(o2Var[,,3,i])))%>% # 3 is depth of 25m
+               o2=as.vector(t(datVar[,,3,i])))%>% # 3 is depth of 25m
         mutate(year=as.numeric(datesDf[i,"year"]))
       
       o2Dfshallow = o2Dfshallow %>% bind_rows(tempDf)
@@ -452,7 +476,7 @@ noaaCMIP6<-function(mpaShp,
       
       tempDf <- expand.grid(lat=lat[1,],lon=lon[,1])%>%
         mutate(lon=ifelse(lon>180,-(360-lon),lon),
-               o2=as.vector(t(o2Var[,,26,i])))%>% # 26 is depth of 427.3156m
+               o2=as.vector(t(datVar[,,26,i])))%>% # 26 is depth of 427.3156m
         mutate(year=as.numeric(datesDf[i,"year"]))
       
       o2DfDeep = o2DfDeep %>% bind_rows(tempDf)
@@ -503,17 +527,31 @@ noaaCMIP6<-function(mpaShp,
   
   ### set up plot area and shp files
   
-  mpa<-mpaShp%>%
-    st_set_crs("EPSG 4326")
-  
-  siteBB<-st_bbox(mpa)
-  
   if(is.na(corr)) {
+    
+    mpa<-mpaShp%>%
+      st_set_crs(4326)
+    
+    siteBB<-st_bbox(mpa)
+    
     ploArea<-st_bbox(c(xmin=as.numeric(siteBB$xmin-buff),
                        xmax=as.numeric(siteBB$xmax+buff),
                        ymin=as.numeric(siteBB$ymin-buff),
                        ymax=as.numeric(siteBB$ymax+buff)),crs = st_crs(mpa))
   } else {
+    
+    mpa<-mpaShp%>%
+      st_cast(to="POINT")%>% # convert polygons to points
+      mutate(lon=st_coordinates(geometry)[,"X"] ,
+             lat=st_coordinates(geometry)[,"Y"])%>%
+      mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
+                            TRUE ~ lon))%>%
+      st_drop_geometry()%>%
+      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(mpaShp)[1])%>%
+      st_set_crs(4326)
+    
+    siteBB<-st_bbox(mpa)
+    
     ploArea<-st_bbox(c(xmin=as.numeric(ifelse(siteBB$xmin<0,180+(180+siteBB$xmin),siteBB$xmin)-buff),
                        xmax=as.numeric(ifelse(siteBB$xmax<0,180+(180+siteBB$xmax),siteBB$xmax)+buff),
                        ymin=as.numeric(siteBB$ymin-buff),
@@ -531,7 +569,7 @@ noaaCMIP6<-function(mpaShp,
              lat>as.numeric(ploArea$ymin),
              lat<as.numeric(ploArea$ymax))
     } else {
-      o2RevSh<-o2DiffsSh%>%
+      o2SiteSh<-o2DiffsSh%>%
         filter(lon>as.numeric(ploArea$xmin),
                lon<as.numeric(ploArea$xmax),
                lat>as.numeric(ploArea$ymin),
@@ -539,7 +577,7 @@ noaaCMIP6<-function(mpaShp,
         mutate(ave2020=mean(o22020,na.rm=T),
                o2perc60=(diff2060/ave2020)*100)
       
-      o2RevDp<-o2DiffsDp%>%
+      o2SiteDp<-o2DiffsDp%>%
         filter(lon>as.numeric(ploArea$xmin),
                lon<as.numeric(ploArea$xmax),
                lat>as.numeric(ploArea$ymin),
@@ -587,7 +625,7 @@ noaaCMIP6<-function(mpaShp,
     geoShp<-map_data("world")%>%
       st_as_sf(.,
                coords=c("long","lat"),
-               crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+               crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
       group_by(group) %>%
       summarise(geometry = st_combine(geometry)) %>%
       st_cast("POLYGON")%>%
@@ -608,30 +646,31 @@ noaaCMIP6<-function(mpaShp,
              lat>ploArea$ymin & lat<ploArea$ymax)%>%
       st_drop_geometry()%>%
       sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id="group")%>%
-      st_make_valid()
+      st_make_valid()%>%
+      st_set_crs(4326)
   }
   
   ## get eez
   
-  mrEezName<-mr_geo_code(place = mrSearch, like = TRUE, fuzzy = FALSE)%>%filter(placeType=="EEZ")%>%select(accepted)%>%as.numeric()
-  
-  siteEez<-mr_shp(key="MarineRegions:eez",filter=mrEezName)%>%
-    st_as_sf(.,
-             crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-  
-  if(corr=="lonFx") {
-    siteEez<-siteEez%>%
-      st_as_sf(.,
-               coords=c("long","lat"),
-               crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
-      st_cast(to="POINT")%>% # convert polygons to points
-      mutate(lon=st_coordinates(geometry)[,"X"] ,
-             lat=st_coordinates(geometry)[,"Y"])%>%
-      mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
-                            TRUE ~ lon))%>%
-      st_drop_geometry()%>%
-      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(siteEez)[1])
-  }
+  # mrEezName<-mr_geo_code(place = mrSearch, like = TRUE, fuzzy = FALSE)%>%filter(placeType=="EEZ")%>%select(accepted)%>%as.numeric()
+  # 
+  # siteEez<-mr_shp(key="MarineRegions:eez",filter=mrEezName)%>%
+  #   st_as_sf(.,
+  #            crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+  # 
+  # if(corr=="lonFx") {
+  #   siteEez<-siteEez%>%
+  #     st_as_sf(.,
+  #              coords=c("long","lat"),
+  #              crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  #     st_cast(to="POINT")%>% # convert polygons to points
+  #     mutate(lon=st_coordinates(geometry)[,"X"] ,
+  #            lat=st_coordinates(geometry)[,"Y"])%>%
+  #     mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
+  #                           TRUE ~ lon))%>%
+  #     st_drop_geometry()%>%
+  #     sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(siteEez)[1])
+  # }
   
   ### plot data
   if(var %in% c("tos","sos")) {
@@ -654,7 +693,7 @@ noaaCMIP6<-function(mpaShp,
       geom_tile(data=varSite,aes(x=lon,y=lat,fill=diff2060),width=1,height=1)+
       geom_sf(data=mpa,color="grey21",fill=NA)+
       geom_sf(data=geoShp)+
-      geom_sf(data=mrRev)+
+      # geom_sf(data=mrRev)+
       sclFllGrd+
       scale_x_continuous(expand = c(0,0))+
       scale_y_continuous(expand = c(0,0),limits = c(ploArea$ymin,ploArea$ymax+0.1))+
@@ -683,7 +722,7 @@ noaaCMIP6<-function(mpaShp,
       geom_tile(data=o2SiteSh,aes(x=lon,y=lat,fill=o2perc60),width=1,height=1)+
       geom_sf(data=mpa,color="white",fill=NA)+
       geom_sf(data=geoShp)+
-      geom_sf(data=mrRev)+
+      # geom_sf(data=mrRev)+
       sclFllGrdSh+
       scale_x_continuous(expand = c(0,0))+
       scale_y_continuous(expand = c(0,0),limits = c(ploArea$ymin,ploArea$ymax+0.1))+
@@ -709,7 +748,7 @@ noaaCMIP6<-function(mpaShp,
       geom_tile(data=o2SiteDp,aes(x=lon,y=lat,fill=o2perc60),width=1,height=1)+
       geom_sf(data=mpa,color="white",fill=NA)+
       geom_sf(data=geoShp)+
-      geom_sf(data=mrRev)+
+      # geom_sf(data=mrRev)+
       sclFllGrdDp+
       scale_x_continuous(expand = c(0,0))+
       scale_y_continuous(expand = c(0,0),limits = c(ploArea$ymin,ploArea$ymax+0.1))+
@@ -717,7 +756,7 @@ noaaCMIP6<-function(mpaShp,
       ggtitle("Projected Change in Oxygen Concentration: Deep (>425m)",subtitle = "2020 to 2060")+
       theme_bw()
     
-    erturn(list(o2DiffSh,o2DiffSh))
+    return(list(o2DiffSh,o2DiffDp))
   }
   
 }
@@ -731,7 +770,7 @@ noaaCMIP6<-function(mpaShp,
 # mpaShp = sf object of MPA shape file
 # buff = distance around mpa shape file for which analysis is conducted (to calculate extent box, "ploArea"). In decimal degrees (numeric)
 # siteName = short code for site name to be used in the name of the output file (string with no spaces)
-# nowFut = one of "now" for data from 2019 or "future" for data projections, to indicate which dataset to pull from 
+# nowFut = one of "now" for data from 2019 or "fut" for data projections, to indicate which dataset to pull from 
 # corr = indicates whether longitude (lonFx) needs to be corrected for crossing the 180 meridian, if no use NA
 
 # output: new csv file with species that intsect with the indicated site area (shapefile + buffer)
@@ -740,7 +779,7 @@ noaaCMIP6<-function(mpaShp,
 aqmapClip<-function(mpaShp,
                     buff,
                     siteName,
-                    nowFut=c("now","future"),
+                    nowFut=c("now","fut"),
                     corr=c(NA,"lonFx")) {
   
   mpa<-mpaShp%>%
@@ -810,7 +849,7 @@ aqmapClip<-function(mpaShp,
     
   }
   
-  fileNm<-paste(siteName,"Aquamaps",nowFut,".shp",sep="")
+  fileNm<-paste("data/aqClips/",siteName,"Aq",nowFut,".shp",sep="")
   
   ### write to new file
   st_write(aqSite,fileNm)
@@ -837,19 +876,54 @@ aqmapClip<-function(mpaShp,
 # !!! NOT coded for sites that cross the 180 meridian (like the Lau Seascape, see LauCC for this code)
 
 
-dSppRich<-function(mpaShp,siteName,buff,thresh=0.3,corr=c(NA, "lonFx")){
+dSppRich<-function(mpaShp,siteName,buff,thresh=0.4,corr=c(NA, "lonFx")){
   
-  ## pull in & format data
-  mpa<-mpaShp%>%
-    st_set_crs("EPSG 4326")#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+  ## pull in & format maps data
+  if(is.na(corr)) {
+    
+    mpa<-mpaShp%>%
+      st_set_crs(4326)#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+    
+  } else {
+    mpa<-mpaShp%>%
+      st_set_crs(4326)%>%
+      st_cast(to="POINT")%>% # convert polygons to points
+      mutate(lon=st_coordinates(geometry)[,"X"] ,
+             lat=st_coordinates(geometry)[,"Y"])%>%
+      mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
+                            TRUE ~ lon))%>%
+      st_drop_geometry()%>%
+      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(mpaShp)[1])%>%
+      st_set_crs(4326)
+  }
+  
+  siteBB<-st_bbox(mpa)
+  
+  if(is.na(corr)) {
+    ploArea<-st_bbox(c(xmin=as.numeric(siteBB$xmin-buff),
+                       xmax=as.numeric(siteBB$xmax+buff),
+                       ymin=as.numeric(siteBB$ymin-buff),
+                       ymax=as.numeric(siteBB$ymax+buff)),
+                     crs = st_crs(mpa))
+  } else {
+    ploArea<-st_bbox(c(xmin=as.numeric(ifelse(siteBB$xmin<0,
+                                              180+(180+siteBB$xmin),
+                                              siteBB$xmin)-buff),
+                       xmax=as.numeric(ifelse(siteBB$xmax<0,
+                                              180+(180+siteBB$xmax),
+                                              siteBB$xmax)+buff),
+                       ymin=as.numeric(siteBB$ymin-buff),
+                       ymax=as.numeric(siteBB$ymax+buff)),
+                     crs = st_crs(mpa))
+  }
   
   aqSpp<-read_csv("data/speciesoccursum.csv")
   
   ### current data
-  nowFile<-paste(siteName,"Aquamapsnow",".shp",sep="")
+  nowFile<-paste("data/aqClips/",siteName,"Aqnow",".shp",sep="")
   if (file.exists(nowFile)) {
     
-    siteNow<-read_csv(nowFile)
+    siteNow<-read_sf(nowFile)
     
   } else {
     stop(paste("The file does not exist: ",nowFile,". Create this file with 'aqmapClip()' before re-running"))
@@ -858,11 +932,11 @@ dSppRich<-function(mpaShp,siteName,buff,thresh=0.3,corr=c(NA, "lonFx")){
   colnames(siteNow)<-c("SpeciesID","probability","geometry")
   
   ### future data
-  futFile<-paste(siteName,"Aquamapsfut",".shp",sep="")
+  futFile<-paste("data/aqClips/",siteName,"Aqfut",".shp",sep="")
   
   if (file.exists(futFile)) {
     
-    siteNow<-read_sf(futFile)
+    siteFut<-read_sf(futFile)
     
   } else {
     stop(paste("The ",futFile, " file does not exist. Create this file with 'aqmapClip()' before re-running"))
@@ -926,32 +1000,32 @@ dSppRich<-function(mpaShp,siteName,buff,thresh=0.3,corr=c(NA, "lonFx")){
   
   ## get eez
   
-  mrEezName<-mr_geo_code(place = mrSearch, like = TRUE, fuzzy = FALSE)%>%filter(placeType=="EEZ")%>%select(accepted)%>%as.numeric()
-  
-  siteEez<-mr_shp(key="MarineRegions:eez",filter=mrEezName)%>%
-    st_as_sf(.,
-             crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-  
-  if(corr=="lonFx") {
-    siteEez<-siteEez%>%
-      st_as_sf(.,
-               coords=c("long","lat"),
-               crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
-      st_cast(to="POINT")%>% # convert polygons to points
-      mutate(lon=st_coordinates(geometry)[,"X"] ,
-             lat=st_coordinates(geometry)[,"Y"])%>%
-      mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
-                            TRUE ~ lon))%>%
-      st_drop_geometry()%>%
-      sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(siteEez)[1])
-  }
+  # mrEezName<-mr_geo_code(place = mrSearch, like = TRUE, fuzzy = FALSE)%>%filter(placeType=="EEZ")%>%select(accepted)%>%as.numeric()
+  # 
+  # siteEez<-mr_shp(key="MarineRegions:eez",filter=mrEezName)%>%
+  #   st_as_sf(.,
+  #            crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+  # 
+  # if(corr=="lonFx") {
+  #   siteEez<-siteEez%>%
+  #     st_as_sf(.,
+  #              coords=c("long","lat"),
+  #              crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  #     st_cast(to="POINT")%>% # convert polygons to points
+  #     mutate(lon=st_coordinates(geometry)[,"X"] ,
+  #            lat=st_coordinates(geometry)[,"Y"])%>%
+  #     mutate(lon2=case_when(lon < 0 ~ 180+(180+lon),
+  #                           TRUE ~ lon))%>%
+  #     st_drop_geometry()%>%
+  #     sfheaders::sf_multipolygon(x="lon2",y="lat",multipolygon_id=colnames(siteEez)[1])
+  # }
   
   ## Plot layers
   
   dSRplot<-ggplot()+
     geom_tile(data=dSppRich,aes(x=lon,y=lat,fill=srDiff),width=0.5,height=0.5)+
     scale_fill_gradient2(low="navyblue",mid="white",high="firebrick",midpoint = 0,name="Change in\nnumber of species")+
-    geom_sf(siteEez,fill=NA,color="grey70")+
+    # geom_sf(siteEez,fill=NA,color="grey70")+
     geom_sf(data = geoShp,fill="grey",color="black")+
     geom_sf(data = mpa,fill=NA, color="deepskyblue4",linetype=2)+
     scale_x_continuous(expand=c(0,0))+
