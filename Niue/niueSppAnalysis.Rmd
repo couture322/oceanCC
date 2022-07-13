@@ -1,0 +1,331 @@
+---
+title: "Niue site"
+author: "J. L. Couture"
+date: "6/16/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Aquamaps data
+
+[Aquamaps](https://www.aquamaps.org/) data (managed by the Environmental Markets Lab at UCSB) provides species range data and estimates into the future based on environmental envelopes and projections of changes to ocean conditions. These estimates are limited, so results are to be treated accordingly. The goals here are to 
+
+1. Plot species richness in an area (current)
+2. Plot estimates of future species richness (2050)
+3. Calculate changes to richness at a site
+
+```{r aquamapsData}
+
+### libraries
+library(tidyverse)
+library(googledrive)
+library(sf)
+library(mregions)
+
+# ### download data to clip
+# datFileNow<-"data/tempDat/aquamapsNow.csv" #where to put it
+# 
+# drive_download("hcaf_species_native-001.csv", #csv file ### 2050: rcp85_hcaf_species_native_2050.csv
+#                    path=datFileNow,
+#                    overwrite = TRUE)
+# 
+# aqNow<-read_csv(datFileNow)
+# 
+# ### delete large file once the object has been created
+# if (file.exists(datFileNow)) {
+#  unlink(datFileNow)
+#  cat(paste("The file has been deleted: ",datFileNow))
+# }
+
+
+###temp pull in
+# aqNow<-read_csv("data/tempDat/hcaf_species_native-001.csv",
+#                 col_select = c(SpeciesID,CenterLat,CenterLong,Probability))
+# 
+# aq50<-read_csv("data/tempDat/rcp85_hcaf_species_native_2050.csv",
+#                 col_select = c(SpeciesID,CenterLat,CenterLong,Probability))
+
+```
+
+## Niue MPA species richness
+
+Niue Moana Mahu Marine Protected Area
+
+```{r NiueMPA}
+
+niueShp<-st_read("data/WDPA_WDOECM_Jun2022_Public_555705568_shp_0/WDPA_WDOECM_Jun2022_Public_555705568_shp-polygons.shp")
+
+aqSpp<-read_csv("data/speciesoccursum.csv")
+
+niueBB<-st_bbox(niueShp)
+buff <- 5
+
+ploArea<-st_bbox(c(xmin=as.numeric(niueBB$xmin-buff),
+                   xmax=as.numeric(niueBB$xmax+buff),
+                   ymin=as.numeric(niueBB$ymin-buff),
+                   ymax=as.numeric(niueBB$ymax+buff)),crs = st_crs(niueShp))
+
+### isolate base layers
+
+spShp<-map_data("world",region=c("Niue","Fiji","Tonga","Samoa"))%>%
+  st_as_sf(.,
+           coords=c("long","lat"),
+           crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+  group_by(group) %>%
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")%>%
+  st_crop(.,ploArea)
+
+## pull EEZ from marine regions
+
+niuEez<-mr_shp(key="MarineRegions:eez",filter="Niue Exclusive Economic Zone")%>%
+  st_as_sf(.,
+           crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+```
+
+```{r}
+
+# aqNiue<-aqNow%>%
+#   st_as_sf(coords=c("CenterLong","CenterLat"),
+#            crs=4326)%>%#"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")%>%
+#   st_crop(ploArea)
+
+### crop current data to Niue area
+
+# aqNiue<-aqNow%>%
+#   filter(CenterLong>as.numeric(ploArea$xmin),
+#          CenterLong<as.numeric(ploArea$xmax),
+#          CenterLat>as.numeric(ploArea$ymin),
+#          CenterLat<as.numeric(ploArea$ymax))%>%
+#   st_as_sf(coords=c("CenterLong","CenterLat"),
+#            crs=4326)
+# 
+# st_write(aqNiue,"data/aquamapsClips/niueAqNow.shp")
+
+### crop future data to Niue area
+
+# aqNiue50<-aq50%>%
+#   filter(CenterLong>as.numeric(ploArea$xmin),
+#          CenterLong<as.numeric(ploArea$xmax),
+#          CenterLat>as.numeric(ploArea$ymin),
+#          CenterLat<as.numeric(ploArea$ymax))%>%
+#   st_as_sf(coords=c("CenterLong","CenterLat"),
+#            crs=4326)
+# 
+# st_write(aqNiue50,"data/aquamapsClips/niueAq2050.shp")
+
+```
+
+### Changes to species richness
+
+```{r}
+
+aqNiue<-read_sf("data/aquamapsClips/niueAqNow.shp")
+aqNiue50<-read_sf("data/aquamapsClips/niueAq2050.shp")
+
+niueSR<-aqNiue%>%
+  mutate(geomID=as.character(geometry))%>%
+  group_by(geomID)%>%
+  summarise(speciesRich=n())
+
+niueSR50<-aqNiue50%>%
+  mutate(geomID=as.character(geometry))%>%
+  group_by(geomID)%>%
+  summarise(speciesRich=n())
+
+niueSRdiff<-niueSR%>%
+  rename(srNow=speciesRich)%>%
+  st_join(.,niueSR50)%>%
+  mutate(srDiff=speciesRich-srNow,
+         lon=st_coordinates(.)[,1],
+           lat=st_coordinates(.)[,2])
+  
+```
+
+```{r}
+
+sppRichNiue<-ggplot()+
+  geom_tile(data=niueSRdiff,aes(x=lon,y=lat,fill=srDiff),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  # geom_sf(data=niueShp,fill=NA)+
+  geom_sf(data=niueShp,fill="deepskyblue3",alpha=0.3,color="deepskyblue4",linetype=2)+
+  geom_sf(data=spShp)+
+  geom_sf(data=niuEez,fill="grey80",color=NA,alpha=0.4)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichNiue
+
+```
+
+#### Applying thresholds to species presence in richness calculations
+
+Below tests several threshold levels and compares them
+
+**Thresholds tested:**
+
+* 0.4
+* 0.5
+* 0.6
+* 0.7
+
+```{r}
+
+thrsh<-c(0.4,0.5,0.6,0.7)
+
+thrshDf<-niueSRdiff%>%
+  select(srNow,speciesRich,srDiff,lon,lat)
+
+for(i in 1:length(thrsh)){
+  
+  colnm<-paste("srDiff",3+i,sep="")
+  
+  tmpSR<-aqNiue%>%
+    filter(Probability >= thrsh[i])%>%
+    mutate(geomID=as.character(geometry))%>%
+    group_by(geomID)%>%
+    summarise(sr=n())%>%
+    select(-geomID)
+
+  tmpSR50<-aqNiue50%>%
+    filter(Probability >= thrsh[i])%>%
+    mutate(geomID=as.character(geometry))%>%
+    group_by(geomID)%>%
+    summarise(sr50=n())%>%
+    select(-geomID)
+
+  tmpSRdiff<-tmpSR%>%
+    st_join(.,tmpSR50)%>%
+    mutate(!!colnm := sr50-sr)%>%
+    select(-c(sr,sr50))
+  
+  thrshDf<-thrshDf%>%
+    st_join(.,tmpSRdiff)
+  
+}
+
+
+```
+
+```{r}
+
+sppRichNiue4<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff5),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=niueShp,fill=NA)+
+  geom_sf(data=spShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.4 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichNiue4
+
+sppRichNiue5<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff5),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=niueShp,fill=NA)+
+  geom_sf(data=spShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.5 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichNiue5
+
+sppRichNiue6<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff6),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=niueShp,fill=NA)+
+  geom_sf(data=spShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.6 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichNiue6
+
+sppRichNiue7<-ggplot()+
+  geom_tile(data=thrshDf,aes(x=lon,y=lat,fill=srDiff7),width=0.5,height=0.5)+
+  scale_fill_gradient2(midpoint = 0,name="Change in\nnumber of species")+
+  geom_sf(data=niueShp,fill=NA)+
+  geom_sf(data=spShp)+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes in species richness (2019 to 2050)", subtitle = "Data source: Aquamaps, 0.7 threshold",x="longitude",y="latitude")+
+  theme_bw()
+  
+sppRichNiue7
+
+```
+
+### Invasions and losses from the MPA
+
+```{r}
+
+spLs<-aqNiue%>%
+  filter(Probability>=0.5)%>% # 50% probability threshold
+  st_crop(revShp)%>%
+  group_by(SpecsID)%>%
+  summarise(howComm=sum(Prbblty))%>%
+  # select(SpecsID)%>%
+  st_drop_geometry()
+
+spLs50<-aqNiue50%>%
+  filter(Probability>=0.5)%>% # 50% probability threshold
+  st_crop(revShp)%>%
+  group_by(SpecsID)%>%
+  summarise(howComm50=sum(Prbblty))%>%
+  # select(SpecsID)%>%
+  st_drop_geometry()
+
+
+niueSpLoss<-anti_join(spLs,spLs50)%>%
+  rename(SpeciesID=SpecsID)%>%
+  left_join(.,aqSpp%>%
+              select(SpeciesID, Genus, Species,FBname))%>%
+  arrange(desc(howComm))
+
+niueSpGain<-anti_join(spLs50,spLs)%>%
+  rename(SpeciesID=SpecsID)%>%
+  left_join(.,aqSpp%>%
+              select(SpeciesID, Genus, Species,FBname))%>%
+  arrange(desc(howComm50))
+
+niueSpShifts<- niueSpLoss%>%
+  mutate(direction="lost")%>%
+  bind_rows(.,niueSpGain%>%
+              rename(howComm=howComm50)%>%
+              mutate(direction="intro"))
+# write_csv(niueSpShifts,"niueAqmapSppShifts_thresh50.csv")  
+
+```
+
+### Economically relevant species
+
+Quick look at fishing in the area on the [Global Fishing Water data portal](https://globalfishingwatch.org/map/fishing-activity/udw-niue_mpa-public) shows that *drifting longlines* is the main fishing gear used in the area. This gear target ____ ???____ species, 
+
+```{r}
+
+# tunMacs<-data.frame(genus=c("Thunnus","Neothunnus","Allothunnus","Auxis","Euthynnus","Katsuwonus","Rastrelliger","Scomber","Acanthocybium","Grammatorcynus","Scomberomorus"),
+#                     fish=c(rep("tuna",6),rep("mackerel",5)))
+# 
+# kable(tunMacs)
+
+```
+
+```{r}
+
+# fishedChg<-niueSpShifts%>%
+#   filter(Genus %in% tunMacs$genus)
+# 
+# kable(fishedChg)
+
+```
+

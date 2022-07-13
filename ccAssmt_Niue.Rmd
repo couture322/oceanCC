@@ -1,0 +1,74 @@
+---
+title: "Niue MPA Climate Assessment"
+author: "J. L. Couture"
+output:
+  html_document:
+    code_folding: hide
+    fig_width: 12
+  distill::distill_article: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE,fig.align = "center")
+
+library(tidyverse)
+library(kableExtra)
+library(distill)
+
+# source(file.path('..',"sourceCode","calcSource.R"))
+
+```
+::: {.floatting}
+
+```{r out.width='45%', out.extra='style="float:right; padding:10px"'}
+knitr::include_graphics("Niue/imgs/niueAllianceMap.png")
+```
+
+
+Niue is a small remote island nation in the central South Pacific. The area receives relatively low productivity, but due to its remoteness and small size, its ~2,000 inhabitants rely on local marine resources for nutrition. Marine ecosystems are also 
+137,380 km2 (43% of the Niue EEZ) of ocean conservation area, including the highly protected **Moana Mahu Marine Protected Area (MPA)**, the highly protected **Nukutulueatama-Beveridge Reef Special Management Area (SMA)**, and the conservation zones within the recently designated **Niue Nukutuluea Multiple-Use Marine Park**.
+
+:::
+
+##### Site description  
+*From the Blue Nature Alliance brief*
+
+The total site area is modest with ~126,000km but this represents 40% of the EEZ under strict protection. Niue is small, isolated, and located in a zone of low productivity with no significant up-welling. Formed from an uplifted reef platform with deep water next to the shore, Niue does not have any lagoon to generate additional habitats and nurseries for reef species. Niue’s EEZ has close to 100 seamounts referenced and ridges that are interconnected, associated with the island and are important oceanic features for biodiversity, resources, and genes spillover as well as pinpoints for migratory species. There are at least three outlying coral reefs, which are at or near the surface (Beveridge, Antipode, and Haran). Of these, Beveridge Reef / Nukutulueatama considered as an ecological jewel of cultural important for Niuean's and Cook Islanders is located 240 km to the southeast of Niue. It is the largest outlying coral reef, and it boosts biomasses of fishes that are 7.5 times larger than in Niue and densities of grey reef sharks much greater than recorded anywhere else in the world at the time of the survey. Currently protected, Nukutuleata is a critical source of spillover for Niue’s reef. 
+
+##### Significant species
+
+The most iconic marine species of Niue are the **Katuali** or flat-tail sea snake (*Laticauda schistorhynchus*), which is endemic to Niue and is listed as Vulnerable as well as the **Blainville’s beaked whales** (*Mesoplodon densirostris* - Data Deficient by IUCN), a rarely seen species but known for their site-fidelity that was sighted several times at Beveridge Reef. 
+
+***
+
+### Model Projections
+
+Below we have pulled data from several projections of marine conditions based on CMIP6 data. The data are focused around Niue and surrounding waters (see extent map below for specific region assessed). Data are subset from global models so results are often course but give us an idea of what conditions might look like into the future and what climate impacts to be aware of in planning and management.
+
+![](Niue/imgs/niueExtMap.png)
+
+
+#### CMIP6 Climate projections
+
+Here we look at how sea surface temperature and salinity will change by 2060 and how oxygen levels are predicted to change in shallow systems and at depth around the Niue MPA. We are still preparing data to assess how temperatures might change throughout the water column and will add those to these analyses when they are ready. 
+
+![](Niue/imgs/niueNoaaSST.png){width=75%}
+
+***
+
+![](Niue/imgs/niueNoaaSSS.png){width=75%}
+
+***
+
+```{r, echo=FALSE,out.width="59%",out.height="20%",fig.show='hold',fig.align='center'}
+knitr::include_graphics(c("Niue/imgs/niueNoaaO2_shllw.png","Niue/imgs/niueNoaaO2_dp.png"))
+```
+
+***
+
+#### Species distributions
+
+![](Niue/imgs/niue_dSR.png){width=75%}
+
+

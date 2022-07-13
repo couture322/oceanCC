@@ -1,0 +1,107 @@
+---
+title: "Niue Climate Data Runs"
+author: "J. L. Couture"
+date: "7/12/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(kableExtra)
+library(sf)
+
+source(file.path('..',"sourceCode","calcSource.R"))
+
+```
+
+### Extent Map
+
+```{r warning=FALSE, message=FALSE}
+
+niueShp<-st_read("data/WDPA_WDOECM_Jun2022_Public_555705568_shp_0/WDPA_WDOECM_Jun2022_Public_555705568_shp-polygons.shp",quiet=TRUE)
+
+niueExt<-extMapFunc(niueShp,buff=7,zoomLat=30,zoomLon=40,corr="lonFx")
+
+niueExt
+
+# tiff("imgs/niueExtentMap.tiff")
+
+```
+
+***
+
+### CMIP6 Climate projections
+
+Below we look at how sea surface temperature and salinity will change by 2060 and how oxygen levels are predicted to change in shallow systems and at depth around the Revillagigedo MPA. We are still preparing data to assess how temperatures might change throughout the water column and will add those to these analyses when they are ready. 
+
+```{r}
+
+niueSST<-noaaCMIP6(mpaShp=niueShp,
+                    buff=7,
+                    siteName="Niue MPA",
+                    var="tos",
+                    corr=NA)
+niueSST
+
+# tiff("imgs/niueNoaaSST.tiff")
+
+
+```
+
+```{r}
+
+niueSSS<-noaaCMIP6(mpaShp=niueShp,
+                    buff=7,
+                    siteName="Niue MPA",
+                    var="sos",
+                    corr=NA)
+niueSSS
+
+# tiff("imgs/niueNoaaSSS.tiff")
+
+```
+
+```{r}
+
+niueO2<-noaaCMIP6(mpaShp=niueShp,
+                    buff=7,
+                    siteName="Niue MPA",
+                    var="o2",
+                    corr=NA)
+niueO2
+
+# tiff("imgs/niueNoaaO2.tiff")
+# png("imgs/niueNoaaO2.png")
+
+```
+
+#### Species distributions
+
+```{r}
+
+### clip data to niue bounding box
+### Already run
+
+# aqmapClip(mpaShp = niueShp,
+#                      buff = 7,
+#                      siteName="Niue",
+#                      nowFut="now",
+#                      corr=NA)
+# 
+# aqmapClip(mpaShp = niueShp,
+#                      buff = 7,
+#                      siteName="Niue",
+#                      nowFut="fut",
+#                      corr=NA)
+
+
+```
+
+```{r}
+
+niue_dSR<-dSppRich(mpaShp = niueShp,siteName = "niue",buff=7,thresh = 0.6,corr = NA)
+
+```
+
