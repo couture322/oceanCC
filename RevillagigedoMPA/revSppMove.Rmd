@@ -469,6 +469,62 @@ tun4n+tun4f+plot_layout(guides = "collect")
 
 ```
 
+
+#### Sardine species
+
+The Revillagigedo team requested that we look into sardines, below I've pulled the sardine species present in the area
+
+```{r}
+sardGens<-c("Sardina","Sardinops","Sardinella","Dussumieria")
+
+aqSarSpp<-aqSpp%>%
+  filter(Genus %in% sardGens)
+
+```
+
+
+```{r}
+
+sarDist<-aqRev%>%
+  mutate(year=2019)%>%
+  bind_rows(aqRev50%>%mutate(year=2050))%>%
+  mutate(lon=st_coordinates(.)[,1],
+           lat=st_coordinates(.)[,2])%>%
+  filter(SpecsID %in% aqSarSpp$SpeciesID)
+
+```
+
+```{r}
+
+
+Ssagax19<-sarDist%>%
+  filter(year==2019)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="Sardinops sagax (So. American pilchard)", subtitle = "2019",x="longitude",y="latitude")+
+  theme_bw()
+
+Ssagax50<-sarDist%>%
+  filter(year==2050)%>%
+  ggplot()+
+   geom_tile(aes(x=lon,y=lat,fill=Prbblty),width=0.5,height=0.5)+
+  scale_fill_gradient(name="Probability of\noccurance",limits=c(0,1),low="white",high="orangered4")+
+  geom_sf(data=revShp,fill=NA)+
+  geom_sf(data=mxShp)+
+  scale_x_continuous(limits=c(ploArea$xmin,ploArea$xmax),expand=c(0,0))+
+  scale_y_continuous(limits=c(ploArea$ymin,ploArea$ymax),expand=c(0,0))+
+  labs(title="\n", subtitle = "2050",x="longitude",y="latitude")+
+  theme_bw()
+
+Ssagax19+Ssagax50+plot_layout(guides = "collect")
+
+```
+
 ***
 
 ### Species turnover
