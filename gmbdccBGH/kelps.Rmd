@@ -1,0 +1,134 @@
+---
+title: "Biogenic Habitats"
+author: "Marine SPARC"
+date: "2022-09-08"
+output: html_document
+---
+
+
+
+```{r}
+
+library(tidyverse)
+library(sf)
+library(ggrepel)
+library(ncdf4)
+library(raster)
+library(lattice)
+library(RColorBrewer)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(patchwork)
+library(gganimate)
+library(googledrive)
+library(betapart)
+
+# source("calcSource.R")
+
+```
+
+### Pull in Aquamaps data
+
+```{r}
+
+####### PULL IN AQUAMAPS data - all
+### current data
+# datFileNow<-"data/tempDat/aquamaps50.csv" #where to put it
+# 
+# drive_download("rcp85_hcaf_species_native_2050.csv",#"hcaf_species_native-001.csv", #csv file
+#                    path=datFileNow,
+#                    overwrite = TRUE)
+
+###temp pull in
+aqNow<-read_csv("../data/aquamaps/hcaf_species_native-001.csv",
+                col_select = c(SpeciesID,CenterLat,CenterLong,Probability))
+
+aq50<-read_csv("../data/aquamaps/rcp85_hcaf_species_native_2050.csv",
+                col_select = c(SpeciesID,CenterLat,CenterLong,Probability))
+
+aqSpp<-read_csv("../data/aquamaps/speciesoccursum.csv")
+
+### delete large file once the object has been created
+# if (file.exists(datFileNow)) {
+#  unlink(datFileNow)
+#  cat(paste("The file has been deleted: ",datFileNow))
+# }
+
+
+```
+
+```{r}
+
+#### Kelp species
+
+
+kelps<-aqSpp%>%
+  filter(Order=="Laminariales")
+
+```
+
+
+
+### Macrocystis pyrifera
+
+```{r}
+
+### Macrocystis pyrifera: aquamaps sppID = SLB-145429
+
+Mpyrf<-aqNow%>%
+  filter(SpeciesID=="SLB-145429")%>%
+  mutate(year=2019)%>%
+  rename(lon=CenterLong,
+             lat=CenterLat)
+
+world<-map_data("world")
+
+Mpyrf50<-aq50%>%
+  filter(SpeciesID=="SLB-145429")%>%
+  mutate(year=2050)%>%
+  rename(lon=CenterLong,
+             lat=CenterLat)
+
+MpyrfPlt<-ggplot()+
+    geom_map(data=world, map=world,aes(map_id=region),color="grey85",fill=NA)+
+    geom_tile(data=Mpyrf,aes(x=lon,y=lat,fill=Probability),width=0.5,height=0.5)+
+    scale_fill_gradient(high = "#da4325",low = "#e7e1bc",limits=c(0,1),name="")+
+    # geom_sf(data = mpa,fill=NA, color="grey27")+
+    scale_x_continuous(expand=c(0,0))+
+    scale_y_continuous(expand=c(0,0))+
+    labs(title="Giant kelp distribution (Macrocystis pyrifera)", subtitle = "2019",x="longitude",y="latitude")+
+    theme_bw()
+
+
+Mpyrf50plt<-ggplot()+
+    geom_map(data=world, map=world,aes(map_id=region),color="grey85",fill=NA)+
+    geom_tile(data=Mpyrf50,aes(x=lon,y=lat,fill=Probability),width=0.5,height=0.5)+
+    scale_fill_gradient(high = "#da4325",low = "#e7e1bc",limits=c(0,1),name="")+
+    # geom_sf(data = mpa,fill=NA, color="grey27")+
+    scale_x_continuous(expand=c(0,0))+
+    scale_y_continuous(expand=c(0,0))+
+    labs(title="Giant kelp distribution (Macrocystis pyrifera)", subtitle = "2050",x="longitude",y="latitude")+
+    theme_bw()
+
+
+# Malfdi19plt + Malfdi50plt +plot_layout(guides="collect")
+
+MpyrDiffs<-Mpyrf50%>%
+  rename(prob50=Probability)%>%
+  full_join(.,Mpyrf,by=c("lat","lon"))%>% 
+    mutate_at(c('prob50','Probability'), ~replace_na(.,0))%>%
+  mutate(diff=prob50-Probability)
+
+MpyrDiffPlt<-ggplot()+
+  geom_map(data=world, map=world,aes(map_id=region),color="grey85",fill=NA)+
+  geom_tile(data=MpyrDiffs,aes(x=lon,y=lat,fill=diff),width=0.5,height=0.5)+
+  scale_fill_gradient2(high="blue",low = "red",mid = "white",limits=c(-0.5,0.5),name="")+
+  # scale_fill_gradient2(high="#0a6165",low = "#da4325",mid = "#e7e1bc",limits=c(-0.5,0.5),name="")+
+  # geom_sf(siteEez,fill=NA,color="grey70")+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  labs(title="Changes to the Giant kelp distribution (2019-2050)", subtitle = "Macrocystis pyrifera",x="longitude",y="latitude")+
+  theme_bw()+
+  theme(plot.subtitle = element_text(face="italic"))
+
+```
